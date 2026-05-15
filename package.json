@@ -1,0 +1,10 @@
+{
+  "name": "cnife-pi-extensions",
+  "version": "1.0.0",
+  "private": true,
+  "keywords": ["pi-package"],
+  "description": "CNife's pi agent extensions",
+  "pi": {
+    "extensions": ["./extensions"]
+  }
+}
