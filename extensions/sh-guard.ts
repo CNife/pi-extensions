@@ -6,8 +6,8 @@
  * to assess shell command risk before execution.
  *
  * Risk scoring:
- *   0-20  Safe      → auto-allow
- *   21-100 Caution+ → ask user (Yes / No / Block with reason)
+ *   0-60  Safe      → auto-allow
+ *   61-100 Caution+ → ask user (Yes / No / Block with reason)
  *
  * When sh-guard is not installed, the command is blocked and a link to
  * https://github.com/aryanbhosale/sh-guard is shown.
@@ -140,8 +140,8 @@ export default function (pi: ExtensionAPI) {
 		// ── Score evaluation ────────────────────────────────────────
 		const score = result.score ?? 0;
 
-		// 0-20 Safe → auto-allow
-		if (score <= 20) return undefined;
+		// 0-60 Safe → auto-allow
+		if (score <= 60) return undefined;
 
 		const reason = result.reason ?? "Unknown risk";
 
