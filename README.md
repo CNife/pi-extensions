@@ -2,6 +2,8 @@
 
 CNife's pi agent extensions.
 
+Refer to [AGENTS.md](AGENTS.md) for the project structure, directory conventions, and division of responsibilities among extensions, skills, and prompt templates.
+
 ## Extensions
 
 | File | Description |
@@ -22,7 +24,9 @@ Prompt templates are auto-discovered by pi from the package's `prompts/` convent
 
 | Directory | Description |
 |-----------|-------------|
-| `skills/development-workflow/` | 9 阶段工作流全局地图，提供变更目录解析规则与 Plannotator 审阅入口 |
+| `skills/development-workflow/` | 入口文档 + references/ 阶段详情，提供 9 阶段工作流全景、变更目录解析规则、Plannotator 审阅入口 |
+
+Each skill's `SKILL.md` serves as an entry document; full phase details are in `references/`.
 
 ## Usage
 
@@ -36,6 +40,17 @@ Prompts automatically resolve the active change directory via `changes/.active_c
 ## Tests
 
 ```bash
+# Shell 命令安全分类器测试
+tests/sh-guard.test.sh
+
+# 开发工作流结构一致性测试（92 项断言）
+tests/dev-workflow.test.sh
+```
+
+运行方式：
+
+```bash
+cd tests && bash dev-workflow.test.sh
 cd tests && bash sh-guard.test.sh
 ```
 
