@@ -37,6 +37,18 @@ else
   fail "extensions/dev-workflow.ts 不存在"
 fi
 
+# AGENTS.md 存在且包含分工说明
+if [ -f "$ROOT/AGENTS.md" ]; then
+  ok "AGENTS.md 存在"
+  if grep -q "分工" "$ROOT/AGENTS.md"; then
+    ok "AGENTS.md 包含分工说明"
+  else
+    fail "AGENTS.md 缺少分工说明"
+  fi
+else
+  fail "AGENTS.md 不存在"
+fi
+
 # prompts-dev-workflow/ 已删除
 if [ ! -d "$ROOT/prompts-dev-workflow" ]; then
   ok "prompts-dev-workflow/ 已删除"
@@ -131,6 +143,13 @@ echo "=== README 内容 ==="
 
 README="$ROOT/README.md"
 
+# README 引用 AGENTS.md
+if grep -q "AGENTS" "$README"; then
+  ok "README.md 引用了 AGENTS.md"
+else
+  fail "README.md 未引用 AGENTS.md"
+fi
+
 if grep -q "skills/development-workflow" "$README"; then
   ok "README.md 包含 skills 章节"
 else
@@ -142,6 +161,95 @@ if grep -q "prompts/" "$README" && ! grep -q "prompts-dev-workflow" "$README"; t
 else
   fail "README.md 仍引用旧目录名"
 fi
+
+echo ""
+echo "=== References 结构 ==="
+
+REFS="$ROOT/skills/development-workflow/references"
+
+# 9 个 references 文件全部存在且非空
+for phase in write-plan review-plan plan-to-tasks write-code review-code fix-code write-test review-test write-docs; do
+  f="$REFS/$phase.md"
+  if [ -f "$f" ]; then
+    if [ -s "$f" ]; then
+      ok "references/$phase.md 存在且非空"
+    else
+      fail "references/$phase.md 为空文件"
+    fi
+  else
+    fail "references/$phase.md 不存在"
+  fi
+done
+
+# 每个 references 文件以 # 标题开头
+for phase in write-plan review-plan plan-to-tasks write-code review-code fix-code write-test review-test write-docs; do
+  f="$REFS/$phase.md"
+  if [ -f "$f" ] && head -1 "$f" | grep -q "^# "; then
+    ok "references/$phase.md 以标题行开头"
+  else
+    fail "references/$phase.md 缺少标题行"
+  fi
+done
+
+echo ""
+echo "=== Prompt 模板元数据 ==="
+
+# 每个 prompt 有 description 和 argument-hint frontmatter
+for f in "$ROOT/prompts"/*.md; do
+  name=$(basename "$f")
+  if grep -q "^description:" "$f"; then
+    ok "$name 包含 description"
+  else
+    fail "$name 缺少 description"
+  fi
+  if grep -q "^argument-hint:" "$f"; then
+    ok "$name 包含 argument-hint"
+  else
+    fail "$name 缺少 argument-hint"
+  fi
+done
+
+echo ""
+echo "=== SKILL.md 完整结构 ==="
+
+SKILL="$ROOT/skills/development-workflow/SKILL.md"
+
+# 必须包含核心文件约定
+if grep -q "核心文件约定" "$SKILL"; then
+  ok "SKILL.md 包含核心文件约定"
+else
+  fail "SKILL.md 缺少核心文件约定"
+fi
+
+# 必须包含阶段跳转索引
+if grep -q "阶段跳转索引" "$SKILL"; then
+  ok "SKILL.md 包含阶段跳转索引"
+else
+  fail "SKILL.md 缺少阶段跳转索引"
+fi
+
+# 必须包含操作约束精简版
+if grep -q "操作约束精简版" "$SKILL"; then
+  ok "SKILL.md 包含操作约束精简版"
+else
+  fail "SKILL.md 缺少操作约束精简版"
+fi
+
+# 必须包含 Plannotator 审阅入口
+if grep -q "Plannotator" "$SKILL"; then
+  ok "SKILL.md 包含 Plannotator 审阅入口"
+else
+  fail "SKILL.md 缺少 Plannotator 审阅入口"
+fi
+
+# 必须为每个阶段引用相应的 references 文件
+for phase in write-plan review-plan plan-to-tasks write-code review-code fix-code write-test review-test write-docs; do
+  if grep -q "references/$phase\.md" "$SKILL"; then
+    ok "SKILL.md 引用 references/$phase.md"
+  else
+    fail "SKILL.md 缺少 references/$phase.md 引用"
+  fi
+done
 
 echo ""
 echo "=== 结果 ==="
