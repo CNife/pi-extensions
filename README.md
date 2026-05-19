@@ -8,15 +8,21 @@ CNife's pi agent extensions.
 |------|-------------|
 | `extensions/sh-guard.ts` | Shell command safety classifier — blocks dangerous commands via sh-guard CLI |
 | `extensions/debug-request-body.ts` | Debug extension |
-| `extensions/dev-workflow.ts` | 9-step plan→code→test→docs development workflow with /new-change and /switch-change commands |
+| `extensions/dev-workflow.ts` | 9-stage plan→code→test→docs development workflow with /new-change and /switch-change commands |
 
 ## Prompt Templates
 
 | Directory | Description |
 |-----------|-------------|
-| `prompts-dev-workflow/` | 9 prompt templates (write-plan → review-plan → plan-to-tasks → write-code ⇄ review-code ⇄ fix-code → write-test ⇄ review-test → write-docs) |
+| `prompts/` | 9 prompt templates (write-plan → review-plan → plan-to-tasks → write-code ⇄ review-code ⇄ fix-code → write-test ⇄ review-test → write-docs) |
 
-Prompt templates are contributed globally via `resources_discover` and available as slash commands in any pi project.
+Prompt templates are auto-discovered by pi from the package's `prompts/` convention directory.
+
+## Skills
+
+| Directory | Description |
+|-----------|-------------|
+| `skills/development-workflow/` | 9 阶段工作流全局地图，提供变更目录解析规则与 Plannotator 审阅入口 |
 
 ## Usage
 

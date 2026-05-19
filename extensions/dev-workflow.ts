@@ -1,16 +1,13 @@
 /**
  * Dev Workflow Extension
  *
- * 9-step plan → code → test → docs development workflow for pi.
+ * 9-stage development workflow for pi.
  * Provides:
- *   - resources_discover: contributes prompt templates globally
  *   - /new-change <name>: creates changes/YYYYMMDD-<name>/ + sets active
  *   - /switch-change [dir]: switches active change directory
  *
- * The ".active_change" file bridges extension state into prompt templates —
- * prompts read it to find the current change directory without needing $ARGUMENTS.
- *
- * Prompts are in the sibling directory prompts-dev-workflow/.
+ * Prompt templates and skills are auto-discovered by pi from
+ * the package's prompts/ and skills/ convention directories.
  *
  * Install:
  *   Part of git:github.com/CNife/pi-extensions package
@@ -18,8 +15,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 import { mkdir, writeFile, readFile, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 
@@ -65,15 +61,6 @@ async function listChangeDirs(cwd: string): Promise<string[]> {
 // ── Extension ────────────────────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
-	// ── Contribute prompt templates ───────────────────────────────
-	pi.on("resources_discover", async (_event) => {
-		const dir = dirname(fileURLToPath(import.meta.url));
-		const promptsDir = resolve(dir, "../prompts-dev-workflow");
-		return {
-			promptPaths: [promptsDir],
-		};
-	});
-
 	// ── /new-change ───────────────────────────────────────────────
 	pi.registerCommand("new-change", {
 		description: "创建新的变更目录并设为 active，用法: /new-change <简写>",

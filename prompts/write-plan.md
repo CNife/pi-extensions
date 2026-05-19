@@ -7,13 +7,7 @@ argument-hint: "[变更简写]"
 
 ### 变更目录解析
 
-按以下优先级确定当前变更目录：
-1. `$ARGUMENTS` 非空 → 以此作为变更简写，创建 `changes/YYYYMMDD-变更简写/` 目录
-2. `changes/.active_change` 存在 → 读取其内容作为目录名（去掉首尾空白）
-3. 执行 `ls changes/` 找到最近 `YYYYMMDD-*` 子目录 → 向用户确认
-4. 以上均无 → 在对话中了解变更内容后拟一个英文简写，向用户确认后创建目录
-
-确定后的变更目录记为 `$CHANGE_DIR`，下文所有文件路径均相对于项目根目录。
+按 development-workflow skill 中的变更目录解析规则确定 `$CHANGE_DIR`。
 
 ### 流程
 
