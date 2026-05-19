@@ -5,6 +5,8 @@
   "keywords": ["pi-package"],
   "description": "CNife's pi agent extensions",
   "pi": {
-    "extensions": ["./extensions"]
+    "extensions": ["./extensions"],
+    "prompts": ["./prompts"],
+    "skills": ["./skills"]
   }
 }
