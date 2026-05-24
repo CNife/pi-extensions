@@ -2,11 +2,25 @@
   "name": "cnife-pi-extensions",
   "version": "1.0.0",
   "private": true,
-  "keywords": ["pi-package"],
+  "keywords": [
+    "pi-package"
+  ],
   "description": "CNife's pi agent extensions",
   "pi": {
-    "extensions": ["./extensions"],
-    "prompts": ["./prompts"],
-    "skills": ["./skills"]
+    "extensions": [
+      "./extensions"
+    ],
+    "prompts": [
+      "./prompts"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.75.5",
+    "@earendil-works/pi-ai": "^0.75.5",
+    "@earendil-works/pi-tui": "^0.75.5",
+    "@types/node": "^25.9.1"
   }
 }
