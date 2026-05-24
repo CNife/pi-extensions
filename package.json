@@ -11,7 +11,7 @@
     "lint:fix": "biome check --write ./extensions ./skills && rumdl fmt .",
     "format": "biome format --write ./extensions ./skills && rumdl fmt .",
     "check": "biome check --write --unsafe ./extensions ./skills && rumdl fmt .",
-    "prepare": "husky"
+    "prepare": "husky || true"
   },
   "lint-staged": {
     "{extensions,skills}/**/*.ts": [
