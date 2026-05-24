@@ -1,13 +1,16 @@
 /**
  * Dev Workflow Extension
  *
- * 9-stage development workflow for pi.
+ * 5-stage development workflow for pi.
  * Provides:
  *   - /new-change <name>: creates changes/YYYYMMDD-<name>/ + sets active
  *   - /switch-change [dir]: switches active change directory
  *
  * Prompt templates and skills are auto-discovered by pi from
  * the package's prompts/ and skills/ convention directories.
+ *
+ * Commands provided via prompts/: grill, plan, plan-to-tasks, write-code,
+ * review-code, improve-architecture, prototype, zoom-out, grill-me, hunt
  *
  * Install:
  *   Part of git:github.com/CNife/pi-extensions package

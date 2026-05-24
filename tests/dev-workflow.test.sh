@@ -9,6 +9,11 @@ FAIL=0
 ok() { echo "  ✅ $1"; PASS=$((PASS + 1)); }
 fail() { echo "  ❌ $1"; FAIL=$((FAIL + 1)); }
 
+NEW_PROMPTS=("grill" "plan" "grill-me" "plan-to-tasks" "write-code" "review-code" "improve-architecture" "prototype" "zoom-out")
+NEW_REFS=("grill" "plan" "grill-me" "plan-to-tasks" "write-code" "review-code" "improve-architecture" "prototype" "zoom-out")
+NEW_CMDS=("grill" "plan" "grill-me" "plan-to-tasks" "write-code" "review-code" "improve-architecture" "prototype" "zoom-out" "hunt")
+OLD_FILES=("write-plan" "review-plan" "fix-code" "write-test" "review-test" "write-docs")
+
 echo "=== 目录结构 ==="
 
 # prompts/ 目录存在且包含 9 个 .md 文件
@@ -37,16 +42,18 @@ else
   fail "extensions/dev-workflow.ts 不存在"
 fi
 
-# AGENTS.md 存在且包含分工说明
+# AGENTS.md 存在
 if [ -f "$ROOT/AGENTS.md" ]; then
   ok "AGENTS.md 存在"
-  if grep -q "分工" "$ROOT/AGENTS.md"; then
-    ok "AGENTS.md 包含分工说明"
-  else
-    fail "AGENTS.md 缺少分工说明"
-  fi
 else
   fail "AGENTS.md 不存在"
+fi
+
+# CONTEXT.md 存在
+if [ -f "$ROOT/CONTEXT.md" ]; then
+  ok "CONTEXT.md 存在"
+else
+  fail "CONTEXT.md 不存在"
 fi
 
 # prompts-dev-workflow/ 已删除
@@ -55,6 +62,23 @@ if [ ! -d "$ROOT/prompts-dev-workflow" ]; then
 else
   fail "prompts-dev-workflow/ 仍然存在"
 fi
+
+echo ""
+echo "=== 旧文件已删除 ==="
+
+# 旧 reference 和 prompt 文件全部删除
+for name in "${OLD_FILES[@]}"; do
+  if [ ! -f "$ROOT/skills/development-workflow/references/$name.md" ]; then
+    ok "references/$name.md 已删除"
+  else
+    fail "references/$name.md 仍然存在"
+  fi
+  if [ ! -f "$ROOT/prompts/$name.md" ]; then
+    ok "prompts/$name.md 已删除"
+  else
+    fail "prompts/$name.md 仍然存在"
+  fi
+done
 
 echo ""
 echo "=== SKILL.md 内容 ==="
@@ -74,12 +98,21 @@ else
   fail "SKILL.md 缺少 description frontmatter"
 fi
 
-# 必须包含 9 个阶段的命令
-for cmd in write-plan review-plan plan-to-tasks write-code fix-code review-code write-test review-test write-docs; do
+# 必须包含所有新命令
+for cmd in "${NEW_CMDS[@]}"; do
   if grep -q "/$cmd" "$SKILL"; then
     ok "SKILL.md 引用了 /$cmd"
   else
     fail "SKILL.md 缺少 /$cmd 引用"
+  fi
+done
+
+# 不应包含旧命令
+for cmd in "${OLD_FILES[@]}"; do
+  if grep -q "/$cmd" "$SKILL"; then
+    fail "SKILL.md 仍引用已删除的 /$cmd"
+  else
+    ok "SKILL.md 无 /$cmd 引用"
   fi
 done
 
@@ -93,7 +126,7 @@ fi
 echo ""
 echo "=== Prompt 模板内容 ==="
 
-# 每个 prompt 模板应引用 skill 而非自己展开解析逻辑
+# 每个 prompt 模板应引用 skill
 for f in "$ROOT/prompts"/*.md; do
   name=$(basename "$f")
   if grep -q "development-workflow skill" "$f"; then
@@ -102,11 +135,21 @@ for f in "$ROOT/prompts"/*.md; do
     fail "$name 未引用 development-workflow skill"
   fi
 
-  # 不应该再包含完整的 4 条优先级解析逻辑
+  # 不应该再包含完整的旧解析逻辑
   if grep -q "以上均无" "$f"; then
-    fail "$name 仍包含重复的变更目录解析逻辑（含 '以上均无'）"
+    fail "$name 仍包含重复的变更目录解析逻辑"
   else
     ok "$name 已去掉重复解析逻辑"
+  fi
+done
+
+# 每个 prompt 不应引用已删除的 prompts-dev-workflow
+for f in "$ROOT/prompts"/*.md; do
+  name=$(basename "$f")
+  if grep -q "prompts-dev-workflow" "$f"; then
+    fail "$name 仍引用 prompts-dev-workflow"
+  else
+    ok "$name 不再引用 prompts-dev-workflow"
   fi
 done
 
@@ -122,13 +165,6 @@ else
   ok "dev-workflow.ts 已去掉 resources_discover"
 fi
 
-# extension 不应引用 prompts-dev-workflow
-if grep -q "prompts-dev-workflow" "$EXT"; then
-  fail "dev-workflow.ts 仍引用 prompts-dev-workflow"
-else
-  ok "dev-workflow.ts 不再引用 prompts-dev-workflow"
-fi
-
 # extension 应保留 /new-change 和 /switch-change
 for cmd in new-change switch-change; do
   if grep -q "registerCommand(\"$cmd\"" "$EXT"; then
@@ -139,55 +175,31 @@ for cmd in new-change switch-change; do
 done
 
 echo ""
-echo "=== README 内容 ==="
-
-README="$ROOT/README.md"
-
-# README 引用 AGENTS.md
-if grep -q "AGENTS" "$README"; then
-  ok "README.md 引用了 AGENTS.md"
-else
-  fail "README.md 未引用 AGENTS.md"
-fi
-
-if grep -q "skills/development-workflow" "$README"; then
-  ok "README.md 包含 skills 章节"
-else
-  fail "README.md 缺少 skills 章节"
-fi
-
-if grep -q "prompts/" "$README" && ! grep -q "prompts-dev-workflow" "$README"; then
-  ok "README.md 已更新目录描述，不再引用 prompts-dev-workflow"
-else
-  fail "README.md 仍引用旧目录名"
-fi
-
-echo ""
 echo "=== References 结构 ==="
 
 REFS="$ROOT/skills/development-workflow/references"
 
-# 9 个 references 文件全部存在且非空
-for phase in write-plan review-plan plan-to-tasks write-code review-code fix-code write-test review-test write-docs; do
-  f="$REFS/$phase.md"
+# 新 references 文件全部存在且非空
+for name in "${NEW_REFS[@]}"; do
+  f="$REFS/$name.md"
   if [ -f "$f" ]; then
     if [ -s "$f" ]; then
-      ok "references/$phase.md 存在且非空"
+      ok "references/$name.md 存在且非空"
     else
-      fail "references/$phase.md 为空文件"
+      fail "references/$name.md 为空文件"
     fi
   else
-    fail "references/$phase.md 不存在"
+    fail "references/$name.md 不存在"
   fi
 done
 
 # 每个 references 文件以 # 标题开头
-for phase in write-plan review-plan plan-to-tasks write-code review-code fix-code write-test review-test write-docs; do
-  f="$REFS/$phase.md"
+for name in "${NEW_REFS[@]}"; do
+  f="$REFS/$name.md"
   if [ -f "$f" ] && head -1 "$f" | grep -q "^# "; then
-    ok "references/$phase.md 以标题行开头"
+    ok "references/$name.md 以标题行开头"
   else
-    fail "references/$phase.md 缺少标题行"
+    fail "references/$name.md 缺少标题行"
   fi
 done
 
@@ -242,14 +254,40 @@ else
   fail "SKILL.md 缺少 Plannotator 审阅入口"
 fi
 
+# 必须包含变更目录结构
+if grep -q "tasks/" "$SKILL" && grep -q "adr/" "$SKILL" && grep -q "CONTEXT.md" "$SKILL"; then
+  ok "SKILL.md 包含变更目录结构（tasks/ + adr/ + CONTEXT.md）"
+else
+  fail "SKILL.md 缺少变更目录结构"
+fi
+
+# 不应包含已删除的入口分类
+if grep -q "入口分类" "$SKILL" && grep -q "quick.*feature.*arch" "$SKILL"; then
+  fail "SKILL.md 仍包含已删除的入口分类（quick/feature/arch）"
+else
+  ok "SKILL.md 已去掉入口分类"
+fi
+
 # 必须为每个阶段引用相应的 references 文件
-for phase in write-plan review-plan plan-to-tasks write-code review-code fix-code write-test review-test write-docs; do
-  if grep -q "references/$phase\.md" "$SKILL"; then
-    ok "SKILL.md 引用 references/$phase.md"
+for name in "${NEW_REFS[@]}"; do
+  if grep -q "references/$name\.md" "$SKILL"; then
+    ok "SKILL.md 引用 references/$name.md"
   else
-    fail "SKILL.md 缺少 references/$phase.md 引用"
+    fail "SKILL.md 缺少 references/$name.md 引用"
   fi
 done
+
+echo ""
+echo "=== README 内容 ==="
+
+README="$ROOT/README.md"
+
+# README 引用 AGENTS.md
+if grep -q "AGENTS" "$README"; then
+  ok "README.md 引用了 AGENTS.md"
+else
+  fail "README.md 未引用 AGENTS.md"
+fi
 
 echo ""
 echo "=== 结果 ==="

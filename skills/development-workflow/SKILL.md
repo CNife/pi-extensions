@@ -1,83 +1,91 @@
 ---
 name: development-workflow
-description: AI 开发工作流——围绕 Plan/Code/Test/Docs 三个半工件做 write-review 循环，支持 quick/feature/arch 入口分类。提供变更目录解析、阶段输入输出约定、Plannotator 审阅入口。当用户执行开发任务、创建变更、或使用 /new-change /switch-change /hunt 时使用。
+description: AI 开发工作流——围绕变更目录、grill/plan/tasks/code/review 五阶段做增量推进。提供变更目录解析、阶段输入输出约定、Plannotator 审阅入口。当用户执行开发任务、创建变更、或使用 /new-change /switch-change 时使用。
 ---
 
 # Development Workflow — 入口文档
 
-变更 = **Plan** + **Code** + **Test** + **Docs**，三个半工件各做 write → review 循环。
-入口分类（quick/feature/arch）决定路径深度，所有阶段均为可选。
+变更 = **grill** → **plan** → **tasks** → **code** → **review**，五阶段增量推进。
+所有变更走相同流程，不区分入口类型。
 
-每个变更在 `changes/YYYYMMDD-<简写>/` 下以 plan.md、tasks.md、change.md 三个核心文件驱动。
+每个变更在 `changes/YYYYMMDD-<简写>/` 下以 `plan.md`、`CONTEXT.md`、`tasks/` 目录、`adr/` 目录、`change.md` 五个部分驱动。
 
 **各阶段完整操作说明请参见 [`references/`](./references/) 下对应文件。**
 
-## 入口分类
+## 流水线
 
 ```
-/new-change <简写> [类型]
+/new-change <简写>
+    │
+    ├─ /grill                   ← 追问 + 领域对齐
+    │   changes/<name>/CONTEXT.md, changes/<name>/adr/
+    │
+    ├─ /plan                    ← 写 plan.md（基于 grilled 结论）
+    │
+    ├─ /plan-to-tasks            ← 垂直切片拆解
+    │   tasks/T01-xxx.md ...
+    │
+    ├─ /write-code = tdd         ← 红绿重构
+    │
+    └─ /review-code              ← AI 审查 + 修复
+        │
+        └─ plannotator review    ← 人类审查
 
-类型：
-  quick   — 小修小改（<5 文件，无 schema 变更）
-           默认路径：write-plan → write-code → write-test
-  feature — 新功能开发
-           默认路径：write-plan → review-plan → plan-to-tasks →
-                    write-code → review-code ⇄ fix-code →
-                    write-test → review-test → write-docs
-  arch    — 架构变更/重构/迁移
-           默认路径：完整流程 + 可选 hunt 调试入口
+独立入口：
+    /improve-architecture        ← 手动触发：扫描 → 改进列表 → 创建新变更
 
-不指定时默认 feature。
+诊断入口（按需触发）：
+    /hunt                        ← 根因诊断
 
-在任意阶段均可调整路径深度：
-  降级: "简化" → 跳过当前及后续 review/测试/docs 阶段
-  升级: "需要 review" → 补上 review 阶段
-  改类型: "这是 arch 级变更" → 重新映射默认路径
+辅助技能（不入流水线，随时调用）：
+    /prototype                   ← 可丢弃原型
+    /zoom-out                    ← 提升抽象层级，模块全景地图
+    /grill-me                    ← 纯追问，不写文件
 ```
 
 ## 阶段总览
 
-### Plan（文档）
+### 方案准备
 
-| 命令 | 说明 | 默认启用 |
-|------|------|---------|
-| `/write-plan` | 写方案 + glossary + 假设声明 | quick/feature/arch |
-| `/review-plan` | 审阅方案 + 术语 + 假设 | feature/arch |
-| `/plan-to-tasks` | 垂直切片拆解任务 | feature/arch |
+| 命令 | 说明 |
+|------|------|
+| `/grill` | 逐条追问澄清变更范围和用语，对照 CONTEXT.md 和 ADR 消除歧义，即时更新变更内 CONTEXT.md，创建 ADR |
+| `/plan` | 基于 grilled 结论一次性写入 plan.md |
 
-### Code（代码 + 单元验证）
+### 任务拆解
 
-| 命令 | 说明 | 默认启用 |
-|------|------|---------|
-| `/write-code` | 编码 + 反馈环优先 + 每片自验证 | quick/feature/arch |
-| `/review-code` | 审阅代码 + 完整性 + 调试质量 | feature/arch |
-| `/fix-code` | 修复 + 根因断言 | feature/arch |
-| `/hunt` | 调试入口（根因定位 + 反馈环）| arch |
+| 命令 | 说明 |
+|------|------|
+| `/plan-to-tasks` | 垂直切片拆解为 task 文件，写入 `tasks/T01-xxx.md` 等 |
 
-### Test（验收/集成测试）
+### 实现
 
-| 命令 | 说明 | 默认启用 |
-|------|------|---------|
-| `/write-test` | 集成测试 + E2E 验收 | quick/feature/arch |
-| `/review-test` | 审阅测试质量 | feature/arch |
+| 命令 | 说明 |
+|------|------|
+| `/write-code` | TDD 红绿重构：逐 task 执行 RED→GREEN→REFACTOR，更新 task frontmatter 状态 |
 
-### Docs（发布文档）
+### 审查
 
-| 命令 | 说明 | 默认启用 |
-|------|------|---------|
-| `/write-docs` | 更新 README 等发布文档 | feature/arch |
+| 命令 | 说明 |
+|------|------|
+| `/review-code` | AI 审查（范围偏差/硬性阻断/模式补全/文档债/autofix）→ plannotator 人类审查 |
+
+### 独立入口
+
+| 命令 | 说明 |
+|------|------|
+| `/improve-architecture` | 手动触发，扫描代码库发现改进机会，产列表供选择后创建变更 |
+| `/hunt` | 根因诊断，出问题时按需调用 |
+
+### 辅助技能
+
+| 命令 | 说明 |
+|------|------|
+| `/prototype` | 可丢弃原型验证代码层不确定性 |
+| `/zoom-out` | 提升抽象层级，给出模块全景地图 |
+| `/grill-me` | 纯追问，不绑定变更，不写文件 |
 
 各阶段完整操作说明请参见 [`references/`](./references/) 下对应文件。
-
----
-
-## 默认路径一览
-
-| 入口类型 | 自动执行的阶段 |
-|---------|--------------|
-| **quick** | write-plan → write-code → write-test |
-| **feature** | write-plan → review-plan → plan-to-tasks → write-code → review-code ⇄ fix-code → write-test → review-test → write-docs |
-| **arch** | feature 路径 + 可选 /hunt 入口 |
 
 ---
 
@@ -92,55 +100,95 @@ description: AI 开发工作流——围绕 Plan/Code/Test/Docs 三个半工件�
 
 `$CHANGE_DIR` 确定后，所有文件路径均相对于项目根目录。
 
-## 核心文件约定
+## 变更目录结构
+
+```
+changes/YYYYMMDD-<简写>/
+├── plan.md              # 变更方案（目标、关键决策、用语）、/plan 覆盖写入
+├── CONTEXT.md           # 本次变更新增/修改的项目用语 → 变更完成后同步到根 CONTEXT.md
+├── tasks/               # 可执行任务切片
+│   ├── T01-xxx.md                  # frontmatter: status: 待开始
+│   ├── T02-xxx.md                  # frontmatter: status: 待开始, depends_on: [T01-xxx]
+│   └── ...
+├── adr/                 # 本变更产生的架构决策 → 变更完成后一次性同步到 docs/adr/
+│   └── xxx.md
+└── change.md            # 全流程日志（追加写入，v1→v2→...）
+```
+
+### 核心文件约定
 
 | 文件 | 角色 | 写入方式 |
 |------|------|---------|
-| `plan.md` | 变更方案（目标、结构、关键决策、实施要点 + 假设声明） | 覆盖写入 |
-| `tasks.md` | 子任务拆解与并行分层计划（垂直切片） | 覆盖写入 |
-| `change.md` | 全流程变更日志（顶部 STATE 段 + 版本号顺延 v1→v2→...） | 追加写入 |
-| `glossary.md` | 术语表（有歧义的术语记录，write-plan 阶段维护） | 追加写入 |
+| `plan.md` | 变更方案（目标、关键决策、用语、假设声明） | `/plan` 覆盖写入 |
+| `CONTEXT.md` | 变更新增/修改的项目用语 | `/grill` 追加/修改，完成后同步根 |
+| `tasks/T01-xxx.md` | 单个可执行任务（目标、涉及文件、验证方式） | `/plan-to-tasks` 新建 |
+| `adr/xxx.md` | 架构决策记录（背景、决定、理由） | `/grill` 创建，完成后同步 docs/adr/ |
+| `change.md` | 全流程变更日志 | 各阶段追加写入，v1→v2→... |
+
+### 变更级别状态
+
+| 状态 | 含义 | 判定方式 |
+|------|------|---------|
+| 构思 | 方案还在写 | 只有 plan.md，无 tasks/ |
+| 就绪 | 方案定了，可以开干 | plan.md + tasks/ 都有 |
+| 进行中 | 正在实现 | 有 task frontmatter 为「进行中」 |
+| 完成 | 全部做完 | 所有 task frontmatter 为「完成」 |
+| 搁置 | 暂不推进 | 主动标记 |
+
+### 任务文件格式
+
+```markdown
+---
+status: 待开始 | 进行中 | 完成
+priority: 高 | 中 | 低
+depends_on: [T01-xxx]
+---
+# T01: <标题>
+
+**目标**：<一句话描述>
+
+**涉及文件**：<文件列表>
+
+**验证方式**：<验证命令或检查方法>
+```
+
+> 依赖使用完整 slug；更新任务文件名时需同步检查 `depends_on` 引用。
+
+---
 
 ## 阶段跳转索引
 
-各阶段的完整操作说明、输出格式模板、编码/验证/审阅规则等详见 `references/` 下的对应文件：
-
-| 阶段 | reference 文件 | 主要内容 |
+| 命令 | reference 文件 | 主要内容 |
 |------|---------------|---------|
-| write-plan | [references/write-plan.md](./references/write-plan.md) | 逐层提问 + glossary 维护 + 假设声明 + 辨证框架 |
-| review-plan | [references/review-plan.md](./references/review-plan.md) | 六类排查（含术语一致 + 假设合理）、审核后同步 plan.md |
-| plan-to-tasks | [references/plan-to-tasks.md](./references/plan-to-tasks.md) | 垂直切片拆解、来源决策引用 |
-| write-code | [references/write-code.md](./references/write-code.md) | 反馈环优先 + 每片自验证 + 垂直切片执行 |
-| review-code | [references/review-code.md](./references/review-code.md) | 范围审阅 + 切片完整性 + 调试质量检查 |
-| fix-code | [references/fix-code.md](./references/fix-code.md) | 根因断言 + 可证伪假设 + handoff 保护 |
-| write-test | [references/write-test.md](./references/write-test.md) | 验收/集成测试、测试范围界定 |
-| review-test | [references/review-test.md](./references/review-test.md) | 测试质量审查、断言检查、覆盖率 |
-| write-docs | [references/write-docs.md](./references/write-docs.md) | 文档分类（内联 vs 发布）、逐文件更新 |
+| grill | [references/grill.md](./references/grill.md) | 追问规则、CONTEXT.md 更新、ADR 创建条件 |
+| plan | [references/plan.md](./references/plan.md) | plan.md 写作模板、基于 grilled 结论的写入规则 |
+| grill-me | [references/grill-me.md](./references/grill-me.md) | 纯追问规则，不写文件不绑变更 |
+| plan-to-tasks | [references/plan-to-tasks.md](./references/plan-to-tasks.md) | 垂直切片拆解、task 文件模板 |
+| write-code | [references/write-code.md](./references/write-code.md) | TDD 红绿重构、task 状态更新 |
+| review-code | [references/review-code.md](./references/review-code.md) | AI 审查 + plannotator 人类审 |
+| improve-architecture | [references/improve-architecture.md](./references/improve-architecture.md) | 扫描流程、列表输出、创建变更 |
+| prototype | [references/prototype.md](./references/prototype.md) | 可丢弃原型、结论写入 plan.md |
+| zoom-out | [references/zoom-out.md](./references/zoom-out.md) | 提升抽象层级、模块全景地图 |
 
 ### 操作约束精简版
 
-各 Agent 实现时必须遵守的硬性约束，完整版见对应 references 文件：
-
 | 约束 | 适用范围 | 说明 |
 |------|---------|------|
-| 入口类型决定默认路径 | /new-change | quick/feature/arch 三种类型，不指定默认 feature |
-| 审查最多 3 轮 | review-code | 含 fix-code 来回，第 3 轮为最终审阅 |
-| 修复最多 3 次 | write-code, write-test | 验证失败后最多重试 3 次 |
-| format/lint 修复最多 2 轮 | review-code | 2 轮后未解决的问题记录到残留清单 |
-| 测试最多 2 轮审查 | review-test | 第 2 轮为最终测试审查 |
-| 每层任务按 ID 顺序执行 | write-code | 每层内顺序执行，全部通过进入下一层 |
-| 每次只问一个问题 | write-plan | 附带推荐选项和理由 |
-| 根因断言后才能修复 | fix-code | 修 bug 前必须写 Root cause: 文件:行号 |
-| 三次修复失败→handoff | fix-code | 同一问题 3 次不通过，自动产出状态快照 |
-| tasks 优先垂直切片 | plan-to-tasks | 每片端到端穿透所有层，而非按技术层水平拆 |
+| 每次只问一个问题 | grill, grill-me | 附带推荐选项和理由 |
+| 用语确定即时更新 | grill | 写入 CONTEXT.md，不攒批 |
+| ADR 仅满足三条件才创建 | grill | 难以逆转 + 无上下文看不懂 + 有真实取舍 |
+| 优先垂直切片 | plan-to-tasks | 每片端到端穿透，非按技术层水平拆 |
+| 红→绿→重构 | write-code | 先测试→最小实现→重构，不跨 task |
+| 审查最多 3 轮 | review-code | 含修复来回，第 3 轮最终审阅 |
+| 修复最多 3 次 | write-code | 验证失败后最多重试 3 次 |
+| 根因断言后才能修复 | hunt | Root cause: 文件:行号 |
 
 ## Plannotator 审阅入口
 
 以下阶段可选使用 Plannotator 做人工可视化批注：
 
-- **review-plan**：`plannotator annotate $CHANGE_DIR/plan.md` 标注方案
+- **plan（grill 完成后）**：`plannotator annotate $CHANGE_DIR/plan.md` 标注方案
 - **review-code**：`plannotator review` 在浏览器中查看 diff 并标注
-- **review-test**：`plannotator annotate <测试文件>` 标注测试文件
-- **write-docs**：`plannotator annotate <文档文件>` 标注文档更新
+- **test（write-code 中）**：`plannotator annotate <测试文件>` 标注测试
 
-Plannotator 标注的反馈直接作为下一步的输入（如标注代码后直接进入 fix-code）。
+Plannotator 标注的反馈直接作为下一步的输入。
