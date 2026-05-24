@@ -34,8 +34,7 @@ pi-extensions/
     ├── prototype/SKILL.md                 # 可丢弃原型
     ├── zoom-out/SKILL.md                  # 模块全景地图
     ├── grill-me/SKILL.md                  # 纯追问，不写文件
-    ├── handoff/SKILL.md                   # 会话交接
-    └── hunt/SKILL.md                      # 根因诊断
+    └── handoff/SKILL.md                   # 会话交接
 ```
 
 ## 目录约定
@@ -87,11 +86,11 @@ pi-extensions/
 | `/grill-me` | 纯追问，不写文件，不绑定变更 |
 | `/handoff` | 会话交接，压缩对话为交接文档 |
 
-### 诊断入口（按需触发）
+### 诊断入口（按需触发，需安装 waza）
 
-| 技能 | 说明 |
-|------|------|
-| `/hunt` | 根因诊断，出问题时调用 |
+| 技能 | 说明 | 安装方式 |
+|------|------|----------|
+| `/hunt` | 根因诊断，出问题时调用 | `bunx skills add -g tw93/Waza` |
 
 ## 开发规范
 

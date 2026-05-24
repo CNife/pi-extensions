@@ -39,11 +39,11 @@ description: AI 开发工作流全景——流水线顺序、技能关系、使�
 | `/grill-me` | 纯追问，不写文件，不绑定变更 |
 | `/handoff` | 会话交接，压缩对话为交接文档 |
 
-### 诊断入口（按需触发）
+### 诊断入口（按需触发，需安装 waza）
 
-| 命令 | 说明 |
-|------|------|
-| `/hunt` | 根因诊断，出问题时调用 |
+| 命令 | 说明 | 安装方式 |
+|------|------|----------|
+| `/hunt` | 根因诊断，出问题时调用 | `bunx skills add -g tw93/Waza` |
 
 ## 技能依赖关系
 
@@ -66,7 +66,10 @@ description: AI 开发工作流全景——流水线顺序、技能关系、使�
     /improve-architecture → 创建新变更
 
 辅助技能（随时调用）：
-    /prototype、/zoom-out、/grill-me、/handoff、/hunt
+    /prototype、/zoom-out、/grill-me、/handoff
+
+外部技能（需安装 waza）：
+    /hunt → `bunx skills add -g tw93/Waza`
 ```
 
 ## 变更目录结构
@@ -123,4 +126,4 @@ changes/YYYYMMDD-<简写>/
 | 红→绿→重构 | write-code | 先测试→最小实现→重构，不跨 task |
 | 审查最多 3 轮 | review-code | 含修复来回，第 3 轮最终审阅 |
 | 修复最多 3 次 | write-code | 验证失败后最多重试 3 次 |
-| 根因断言后才能修复 | hunt | Root cause: 文件:行号 |
+| 根因断言后才能修复 | hunt（需安装 waza） | Root cause: 文件:行号 |

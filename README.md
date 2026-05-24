@@ -35,11 +35,11 @@ Refer to [CONTEXT.md](CONTEXT.md) for the project's domain glossary.
 | `/grill-me` | 纯追问，不写文件，不绑定变更 |
 | `/handoff` | 会话交接，压缩对话为交接文档 |
 
-### 诊断入口（按需触发）
+### 诊断入口（按需触发，需安装 waza）
 
-| 技能 | 说明 |
-|------|------|
-| `/hunt` | 根因诊断，出问题时调用 |
+| 技能 | 说明 | 安装方式 |
+|------|------|----------|
+| `/hunt` | 根因诊断，出问题时调用 | `bunx skills add -g tw93/Waza` |
 
 ### 工作流全景
 

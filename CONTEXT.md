@@ -62,7 +62,7 @@ _避免_：头脑风暴（太模糊，grill-me 是有结构的追问）
 `/manage-change` 命令——变更目录管理，包含 new、switch、status、list 四个子命令。替代原 extensions/dev-workflow.ts 的功能。
 
 **根因诊断**：
-`/hunt` 命令——按需触发，先诊断再修复。要求在一句话内明确根因（文件:行号），否则不许动手修。
+`/hunt` 命令——按需触发，先诊断再修复。要求在一句话内明确根因（文件:行号），否则不许动手修。（来自 waza，`bunx skills add -g tw93/Waza`）
 
 ## Example Dialogue
 
