@@ -41,6 +41,7 @@ description: AI 开发工作流——围绕变更目录、grill/plan/tasks/code/
     /prototype                   ← 可丢弃原型
     /zoom-out                    ← 提升抽象层级，模块全景地图
     /grill-me                    ← 纯追问，不写文件
+    /handoff                     ← 会话交接，生成交接文档
 ```
 
 ## 阶段总览
@@ -84,6 +85,7 @@ description: AI 开发工作流——围绕变更目录、grill/plan/tasks/code/
 | `/prototype` | 可丢弃原型验证代码层不确定性 |
 | `/zoom-out` | 提升抽象层级，给出模块全景地图 |
 | `/grill-me` | 纯追问，不绑定变更，不写文件 |
+| `/handoff` | 会话交接，压缩对话为交接文档 |
 
 各阶段完整操作说明请参见 [`references/`](./references/) 下对应文件。
 
@@ -169,6 +171,7 @@ depends_on: [T01-xxx]
 | improve-architecture | [references/improve-architecture.md](./references/improve-architecture.md) | 扫描流程、列表输出、创建变更 |
 | prototype | [references/prototype.md](./references/prototype.md) | 可丢弃原型、结论写入 plan.md |
 | zoom-out | [references/zoom-out.md](./references/zoom-out.md) | 提升抽象层级、模块全景地图 |
+| handoff | [references/handoff.md](./references/handoff.md) | 会话交接、生成交接文档 |
 
 ### 操作约束精简版
 
