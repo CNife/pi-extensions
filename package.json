@@ -6,6 +6,21 @@
     "pi-package"
   ],
   "description": "CNife's pi agent extensions",
+  "scripts": {
+    "lint": "biome check ./extensions ./skills && rumdl check .",
+    "lint:fix": "biome check --write ./extensions ./skills && rumdl fmt .",
+    "format": "biome format --write ./extensions ./skills && rumdl fmt .",
+    "check": "biome check --write --unsafe ./extensions ./skills && rumdl fmt .",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "{extensions,skills}/**/*.ts": [
+      "biome check --write"
+    ],
+    "**/*.md": [
+      "rumdl fmt"
+    ]
+  },
   "pi": {
     "extensions": [
       "./extensions"
@@ -18,9 +33,12 @@
     ]
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.75.5",
+    "@biomejs/biome": "^2.4.15",
     "@earendil-works/pi-ai": "^0.75.5",
+    "@earendil-works/pi-coding-agent": "^0.75.5",
     "@earendil-works/pi-tui": "^0.75.5",
-    "@types/node": "^25.9.1"
+    "@types/node": "^25.9.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.5"
   }
 }
