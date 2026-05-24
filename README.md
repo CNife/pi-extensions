@@ -17,7 +17,7 @@ Refer to [CONTEXT.md](CONTEXT.md) for the project's domain glossary.
 
 | Directory | Description |
 |-----------|-------------|
-| `prompts/` | 9 prompt templates（grill → plan → plan-to-tasks → write-code → review-code + improve-architecture / prototype / zoom-out / grill-me） |
+| `prompts/` | 10 prompt templates（grill → plan → plan-to-tasks → write-code → review-code + improve-architecture / prototype / zoom-out / grill-me / handoff） |
 
 Prompt templates are auto-discovered by pi from the package's `prompts/` convention directory.
 
@@ -59,6 +59,7 @@ Each skill's `SKILL.md` serves as an entry document; full phase details are in `
 /prototype   可丢弃原型
 /zoom-out    模块全景地图
 /grill-me    纯追问，不写文件
+/handoff     会话交接
 ```
 
 Prompts automatically resolve the active change directory via `changes/.active_change`.

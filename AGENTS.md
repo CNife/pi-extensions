@@ -38,7 +38,8 @@ pi-extensions/
 │           ├── review-code.md
 │           ├── improve-architecture.md
 │           ├── prototype.md
-│           └── zoom-out.md
+│           ├── zoom-out.md
+│           └── handoff.md
 ├── prompts/                               # pi 提示词模板 — Agent 阶段指令（~100-150字精简版）
 │   ├── grill.md
 │   ├── plan.md
@@ -48,7 +49,8 @@ pi-extensions/
 │   ├── review-code.md
 │   ├── improve-architecture.md
 │   ├── prototype.md
-│   └── zoom-out.md
+│   ├── zoom-out.md
+│   └── handoff.md
 └── tests/                                 # 测试脚本
     └── dev-workflow.test.sh               # 开发工作流一致性检查
 ```
