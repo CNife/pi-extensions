@@ -162,6 +162,7 @@ const executePythonTool = defineTool({
           stdio: ["ignore", "pipe", "pipe"],
           detached: process.platform !== "win32",
           windowsHide: true,
+          env: { ...process.env, PYTHONUNBUFFERED: "1" },
         });
 
         // Timeout handling
