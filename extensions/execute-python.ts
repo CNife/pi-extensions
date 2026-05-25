@@ -71,15 +71,26 @@ function formatDuration(ms: number): string {
 const executePythonTool = defineTool({
   name: "executePython",
   label: "Execute Python",
-  description:
+  description: [
     "Execute Python code with uv. No bash escaping needed, auto-manages dependencies.",
+    "Output is streamed in real-time with PYTHONUNBUFFERED=1.",
+    "Optionally provide timeout in seconds.",
+  ].join(" "),
+  promptSnippet: "Execute Python code (prefer over bash for complex tasks)",
+  promptGuidelines: [
+    "Use for complex tasks: heavy computation, multi-step data processing, heredoc-style scripts",
+    "Use packages param to declare ALL third-party dependencies (uv auto-manages venv)",
+    "Prefer bash for simple commands or short pipes (≤3 |)",
+    "No bash escaping needed — write Python code directly",
+  ],
   parameters: Type.Object({
     code: Type.String({
       description: "Python code to execute, no escaping needed",
     }),
     packages: Type.Optional(
       Type.Array(Type.String(), {
-        description: "PyPI dependencies, e.g. 'pyyaml' or 'pyyaml>=1.0'",
+        description:
+          "PyPI dependencies to auto-install, e.g. ['requests', 'pandas>=2.0']. uv handles venv automatically.",
         default: [],
       }),
     ),
