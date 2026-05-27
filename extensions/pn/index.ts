@@ -25,6 +25,24 @@ import {
   startMarkdownAnnotationSession,
 } from "@plannotator/pi-extension/plannotator-browser";
 
+/** Shared result handling for all browser session decisions. */
+function handleDecision(
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  label: string,
+  result: { exit?: boolean; approved?: boolean; feedback?: string },
+): void {
+  if (result.exit) {
+    ctx.ui.notify(`${label} closed.`, "info");
+  } else if (result.approved) {
+    ctx.ui.notify(`${label} approved.`, "info");
+  } else if (result.feedback) {
+    pi.sendUserMessage(result.feedback, { deliverAs: "followUp" });
+  } else {
+    ctx.ui.notify(`${label} closed (no feedback).`, "info");
+  }
+}
+
 export default function pn(pi: ExtensionAPI): void {
   // ── /pnr: Code Review ────────────────────────────────────────────
 
@@ -43,16 +61,14 @@ export default function pn(pi: ExtensionAPI): void {
         const session = await startCodeReviewBrowserSession(ctx, {});
         ctx.ui.notify("Code review opened in browser.", "info");
 
-        const result = await session.waitForDecision();
-        if (result.exit) {
-          ctx.ui.notify("Code review closed.", "info");
-        } else if (result.approved) {
-          ctx.ui.notify("Code review approved.", "info");
-        } else if (result.feedback) {
-          pi.sendUserMessage(result.feedback, { deliverAs: "followUp" });
-        } else {
-          ctx.ui.notify("Code review closed (no feedback).", "info");
-        }
+        void session.waitForDecision().then(
+          (result) => handleDecision(pi, ctx, "Code review", result),
+          (err) =>
+            ctx.ui.notify(
+              `Code review failed: ${getStartupErrorMessage(err)}`,
+              "error",
+            ),
+        );
       } catch (err) {
         ctx.ui.notify(
           `Failed to start code review: ${getStartupErrorMessage(err)}`,
@@ -90,50 +106,48 @@ export default function pn(pi: ExtensionAPI): void {
         return;
       }
 
-      let session: Awaited<ReturnType<typeof startMarkdownAnnotationSession>>;
-      const isDir = statSync(absPath).isDirectory();
-
-      if (isDir) {
-        if (!scanMarkdownFiles(absPath)) {
-          ctx.ui.notify(`No markdown files found in ${inputPath}`, "error");
-          return;
-        }
-        ctx.ui.notify(
-          `Opening annotation UI for folder ${inputPath}...`,
-          "info",
-        );
-        session = await startMarkdownAnnotationSession(
-          ctx,
-          absPath,
-          "",
-          "annotate-folder",
-          absPath,
-        );
-      } else {
-        const content = readFileSync(absPath, "utf-8");
-        ctx.ui.notify(`Opening annotation UI for ${inputPath}...`, "info");
-        session = await startMarkdownAnnotationSession(
-          ctx,
-          absPath,
-          content,
-          "annotate",
-        );
-      }
-
       try {
-        const result = await session.waitForDecision();
-        if (result.exit) {
-          ctx.ui.notify("Annotation closed.", "info");
-        } else if (result.approved) {
-          ctx.ui.notify("Annotation approved.", "info");
-        } else if (result.feedback) {
-          pi.sendUserMessage(result.feedback, { deliverAs: "followUp" });
+        const isDir = statSync(absPath).isDirectory();
+        let session: Awaited<ReturnType<typeof startMarkdownAnnotationSession>>;
+
+        if (isDir) {
+          if (!scanMarkdownFiles(absPath)) {
+            ctx.ui.notify(`No markdown files found in ${inputPath}`, "error");
+            return;
+          }
+          ctx.ui.notify(
+            `Opening annotation UI for folder ${inputPath}...`,
+            "info",
+          );
+          session = await startMarkdownAnnotationSession(
+            ctx,
+            absPath,
+            "",
+            "annotate-folder",
+            absPath,
+          );
         } else {
-          ctx.ui.notify("Annotation closed (no feedback).", "info");
+          const content = readFileSync(absPath, "utf-8");
+          ctx.ui.notify(`Opening annotation UI for ${inputPath}...`, "info");
+          session = await startMarkdownAnnotationSession(
+            ctx,
+            absPath,
+            content,
+            "annotate",
+          );
         }
+
+        void session.waitForDecision().then(
+          (result) => handleDecision(pi, ctx, "Annotation", result),
+          (err) =>
+            ctx.ui.notify(
+              `Annotation failed: ${getStartupErrorMessage(err)}`,
+              "error",
+            ),
+        );
       } catch (err) {
         ctx.ui.notify(
-          `Annotation failed: ${getStartupErrorMessage(err)}`,
+          `Failed to open UI: ${getStartupErrorMessage(err)}`,
           "error",
         );
       }
@@ -163,19 +177,17 @@ export default function pn(pi: ExtensionAPI): void {
         ctx.ui.notify("Opening annotation UI for last message...", "info");
         const session = await startLastMessageAnnotationSession(ctx, lastText);
 
-        const result = await session.waitForDecision();
-        if (result.exit) {
-          ctx.ui.notify("Annotation closed.", "info");
-        } else if (result.approved) {
-          ctx.ui.notify("Annotation approved.", "info");
-        } else if (result.feedback) {
-          pi.sendUserMessage(result.feedback, { deliverAs: "followUp" });
-        } else {
-          ctx.ui.notify("Annotation closed (no feedback).", "info");
-        }
+        void session.waitForDecision().then(
+          (result) => handleDecision(pi, ctx, "Annotation", result),
+          (err) =>
+            ctx.ui.notify(
+              `Annotation failed: ${getStartupErrorMessage(err)}`,
+              "error",
+            ),
+        );
       } catch (err) {
         ctx.ui.notify(
-          `Annotation failed: ${getStartupErrorMessage(err)}`,
+          `Failed to open UI: ${getStartupErrorMessage(err)}`,
           "error",
         );
       }
