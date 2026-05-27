@@ -32,6 +32,9 @@
       "./skills"
     ]
   },
+  "dependencies": {
+    "@plannotator/pi-extension": "^0.19.23"
+  },
   "devDependencies": {
     "@biomejs/biome": "^2.4.15",
     "@earendil-works/pi-ai": "^0.75.5",
