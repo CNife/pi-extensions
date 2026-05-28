@@ -1,11 +1,17 @@
 {
   "name": "@cnife/pi-execute-python",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": false,
   "keywords": [
     "pi-package"
   ],
   "description": "Execute Python code with uv - streaming output, dependency management",
+  "homepage": "https://github.com/CNife/pi-extensions#readme",
+  "bugs": {
+    "url": "https://github.com/CNife/pi-extensions/issues"
+  },
+  "license": "MIT",
+  "author": "CNife <CNife@vip.qq.com>",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/CNife/pi-extensions.git"

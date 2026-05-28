@@ -1,13 +1,41 @@
 # cnife-pi-extensions
 
-CNife's pi agent extensions — 多个小技能架构，受 [Matt Pocock skills](https://github.com/mattpocock/skills) 启发。
+CNife's [pi](https://pi.dev) agent extensions — 多个小技能架构，受 [Matt Pocock skills](https://github.com/mattpocool/skills) 启发。
 
 Refer to [AGENTS.md](AGENTS.md) for the project structure, directory conventions, and skill architecture.
 Refer to [CONTEXT.md](CONTEXT.md) for the project's domain glossary.
 
+## Packages
+
+| 包 | 类型 | 说明 |
+|---|------|------|
+| [`@cnife/pi-change-based-workflow`](#skills) | Skills | 变更驱动开发工作流：grill → plan → write-code → review |
+| [`@cnife/pi-execute-python`](#execute-python) | Extension | 用 uv 执行 Python，实时流式输出，自动依赖管理 |
+| [`@cnife/pi-simple-plannotator`](#simple-plannotator) | Extension | 浏览器内代码审查 & Markdown 批注 |
+| [`@cnife/pi-miscs`](#miscs) | Extension | 调试 & 快捷退出等小工具 |
+
+## Install
+
+安装整个仓库（包含所有包）：
+
+```bash
+pi install git:github.com/CNife/pi-extensions
+```
+
+单独安装某个包：
+
+```bash
+pi install npm:@cnife/pi-change-based-workflow
+pi install npm:@cnife/pi-execute-python
+pi install npm:@cnife/pi-simple-plannotator
+pi install npm:@cnife/pi-miscs
+```
+
+---
+
 ## Skills
 
-采用**多个小技能**架构，每个技能职责单一，可自由组合。
+`@cnife/pi-change-based-workflow` — 采用**多个小技能**架构，每个技能职责单一，可自由组合。
 
 ### 核心阶段（流水线）
 
@@ -47,7 +75,7 @@ Refer to [CONTEXT.md](CONTEXT.md) for the project's domain glossary.
 |------|------|
 | `/cnife-pi-workflow` | 工作流全景：流水线顺序、技能关系、使用指南 |
 
-## Quickstart
+### Quickstart
 
 1. 创建变更目录：`/manage-change new <简写>`
 2. 追问澄清：`/grill`
@@ -56,8 +84,38 @@ Refer to [CONTEXT.md](CONTEXT.md) for the project's domain glossary.
 5. 实现：`/write-code`
 6. 审查：`/review-code`
 
-## Install
+---
 
-```bash
-pi install git:github.com/CNife/pi-extensions
-```
+## Extensions
+
+### execute-python
+
+注册 `executePython` 工具，用 [uv](https://docs.astral.sh/uv/) 执行 Python 代码：
+
+- 实时流式输出（`onUpdate`）
+- 自定义 TUI 渲染
+- 进程组管理（detached + signal 清理）
+- 纯文本内容供 LLM 消费
+
+### simple-plannotator
+
+基于 [@plannotator/pi-extension](https://www.npmjs.com/package/@plannotator/pi-extension) 的浏览器内审查工具：
+
+| 命令 | 说明 |
+|------|------|
+| `/pnr` | 对本地 git 变更发起浏览器代码审查 |
+| `/pna <path>` | 对 Markdown 文件或目录发起浏览器批注 |
+| `/pnl` | 对最后一条助手消息进行批注 |
+
+### miscs
+
+| 扩展 | 说明 |
+|------|------|
+| `debug-request-body` | 设置 `PI_DEBUG_REQUEST_BODY=<dir>` 后，将每次 provider 请求体 dump 到指定目录 |
+| `exit` | 输入 `exit` 快捷退出 pi |
+
+---
+
+## License
+
+MIT

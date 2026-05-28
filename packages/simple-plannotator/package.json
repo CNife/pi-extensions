@@ -1,11 +1,17 @@
 {
   "name": "@cnife/pi-simple-plannotator",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": false,
   "keywords": [
     "pi-package"
   ],
   "description": "Browser-based code review and markdown annotation for pi",
+  "homepage": "https://github.com/CNife/pi-extensions#readme",
+  "bugs": {
+    "url": "https://github.com/CNife/pi-extensions/issues"
+  },
+  "license": "MIT",
+  "author": "CNife <CNife@vip.qq.com>",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/CNife/pi-extensions.git"
