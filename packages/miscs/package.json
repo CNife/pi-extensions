@@ -6,6 +6,12 @@
     "pi-package"
   ],
   "description": "Miscellaneous small pi extensions (debug, exit)",
+  "homepage": "https://github.com/CNife/pi-extensions#readme",
+  "bugs": {
+    "url": "https://github.com/CNife/pi-extensions/issues"
+  },
+  "license": "MIT",
+  "author": "CNife <CNife@vip.qq.com>",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/CNife/pi-extensions.git"

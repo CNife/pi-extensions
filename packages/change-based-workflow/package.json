@@ -6,6 +6,12 @@
     "pi-package"
   ],
   "description": "Change-based development workflow skills for pi (grill, plan, write-code, review-code)",
+  "homepage": "https://github.com/CNife/pi-extensions#readme",
+  "bugs": {
+    "url": "https://github.com/CNife/pi-extensions/issues"
+  },
+  "license": "MIT",
+  "author": "CNife <CNife@vip.qq.com>",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/CNife/pi-extensions.git"
