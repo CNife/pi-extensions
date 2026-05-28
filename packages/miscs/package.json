@@ -6,6 +6,14 @@
     "pi-package"
   ],
   "description": "Miscellaneous small pi extensions (debug, exit)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CNife/pi-extensions.git"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "pi": {
     "extensions": [
       "./extensions"
