@@ -83,7 +83,7 @@ export default function pn(pi: ExtensionAPI): void {
   pi.registerCommand("pna", {
     description: "Open annotation UI for a markdown file or folder",
     handler: async (args, ctx) => {
-      const inputPath = (args ?? "").trim();
+      const inputPath = (args ?? "").trim().replace(/^["']|["']$/g, "");
       if (!inputPath) {
         ctx.ui.notify("Usage: /pna <file.md | folder/>", "error");
         return;
