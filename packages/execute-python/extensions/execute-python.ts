@@ -326,10 +326,10 @@ const executePythonTool = defineTool({
     const code = args.code;
     let text = "";
     if (args.packages && args.packages.length > 0) {
-      text += theme.fg("dim", `packages: ${args.packages.join(", ")}`) + "\n";
+      text += `${theme.fg("dim", `packages: ${args.packages.join(", ")}`)}\n`;
     }
     const highlighted = highlightCode(code, "python");
-    text += highlighted.join("\n") + "\n";
+    text += `${highlighted.join("\n")}\n`;
     return new Text(text, 0, 0);
   },
 
@@ -367,7 +367,7 @@ const executePythonTool = defineTool({
         const lines = details.stdout.split("\n");
         const preview = lines.slice(-5).join("\n");
         if (preview) {
-          text += "\n" + preview;
+          text += `\n${preview}`;
         }
       }
       return new Text(text, 0, 0);
@@ -385,7 +385,7 @@ const executePythonTool = defineTool({
         text += preview;
       }
       if (lines.length > 5) {
-        text += "\n" + theme.fg("muted", `... ${lines.length - 5} more lines`);
+        text += `\n${theme.fg("muted", `... ${lines.length - 5} more lines`)}`;
       }
     }
 
@@ -395,8 +395,8 @@ const executePythonTool = defineTool({
         text += details.stdout;
       }
       if (details?.stderr) {
-        text += "\n" + theme.fg("warning", "--- stderr ---");
-        text += "\n" + details.stderr;
+        text += `\n${theme.fg("warning", "--- stderr ---")}`;
+        text += `\n${details.stderr}`;
       }
     }
 
@@ -427,7 +427,7 @@ const executePythonTool = defineTool({
       );
     }
 
-    text += "\n" + statusParts.join("  ");
+    text += `\n${statusParts.join("  ")}`;
 
     return new Text(text, 0, 0);
   },

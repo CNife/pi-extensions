@@ -1,0 +1,20 @@
+{
+  "name": "@cnife/pi-simple-plannotator",
+  "version": "0.1.0",
+  "private": false,
+  "keywords": [
+    "pi-package"
+  ],
+  "description": "Browser-based code review and markdown annotation for pi",
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ]
+  },
+  "dependencies": {
+    "@plannotator/pi-extension": "^0.19.23"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "@cnife/pi-execute-python",
+  "version": "0.1.0",
+  "private": false,
+  "keywords": [
+    "pi-package"
+  ],
+  "description": "Execute Python code with uv - streaming output, dependency management",
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}

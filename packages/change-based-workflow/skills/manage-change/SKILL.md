@@ -17,6 +17,7 @@ argument-hint: "<new|switch|status|list> [名称]"
 **用法**：`/manage-change new <简写>`
 
 **行为**：
+
 1. 生成目录名：`YYYYMMDD-<简写>`（YYYYMMDD 为当天日期）
 2. 创建目录：`changes/YYYYMMDD-<简写>/`
 3. 设置 active：写入 `changes/.active_change`
@@ -30,6 +31,7 @@ argument-hint: "<new|switch|status|list> [名称]"
 **用法**：`/manage-change switch [目录名]`
 
 **行为**：
+
 1. 如果提供了目录名，直接切换
 2. 如果未提供，列出所有变更目录供选择
 3. 更新 `changes/.active_change`
@@ -41,6 +43,7 @@ argument-hint: "<new|switch|status|list> [名称]"
 **用法**：`/manage-change status`
 
 **行为**：
+
 1. 读取 `changes/.active_change` 获取活动目录
 2. 检查目录下文件，判断状态：
    - 只有 plan.md → 构思
@@ -56,6 +59,7 @@ argument-hint: "<new|switch|status|list> [名称]"
 **用法**：`/manage-change list`
 
 **行为**：
+
 1. 扫描 `changes/` 目录，找所有 `YYYYMMDD-*` 子目录
 2. 按日期倒序排列
 3. 标注当前 active 的目录

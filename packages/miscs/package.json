@@ -1,0 +1,17 @@
+{
+  "name": "@cnife/pi-miscs",
+  "version": "0.1.0",
+  "private": false,
+  "keywords": [
+    "pi-package"
+  ],
+  "description": "Miscellaneous small pi extensions (debug, exit)",
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}
