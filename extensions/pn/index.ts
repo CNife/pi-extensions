@@ -113,11 +113,11 @@ export default function pn(pi: ExtensionAPI): void {
 
         if (isDir) {
           if (!scanMarkdownFiles(absPath)) {
-            ctx.ui.notify(`No markdown files found in ${inputPath}`, "error");
+            ctx.ui.notify(`No markdown files found in ${normalized}`, "error");
             return;
           }
           ctx.ui.notify(
-            `Opening annotation UI for folder ${inputPath}...`,
+            `Opening annotation UI for folder ${normalized}...`,
             "info",
           );
           session = await startMarkdownAnnotationSession(
@@ -129,7 +129,7 @@ export default function pn(pi: ExtensionAPI): void {
           );
         } else {
           const content = readFileSync(absPath, "utf-8");
-          ctx.ui.notify(`Opening annotation UI for ${inputPath}...`, "info");
+          ctx.ui.notify(`Opening annotation UI for ${normalized}...`, "info");
           session = await startMarkdownAnnotationSession(
             ctx,
             absPath,
