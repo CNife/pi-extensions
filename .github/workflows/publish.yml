@@ -1,15 +1,54 @@
-name: Publish Package
+name: Publish Packages
 
 on:
   push:
-    tags:
-      - "*-[0-9]*.[0-9]*.[0-9]*"
+    branches: [main]
 
 jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.changes.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect version changes
+        id: changes
+        run: |
+          CHANGED="[]"
+          for dir in packages/*/; do
+            PKG="$dir/package.json"
+            [ -f "$PKG" ] || continue
+
+            # 比较 HEAD 和 HEAD~1 的 version 字段
+            OLD=$(git show HEAD~1:"$PKG" 2>/dev/null | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf-8')).version" 2>/dev/null || echo "")
+            NEW=$(node -p "require('./$PKG').version")
+
+            if [ "$OLD" != "$NEW" ]; then
+              NAME=$(node -p "require('./$PKG').name")
+              DIR_NAME=$(basename "$dir")
+              echo "检测到变更: $NAME $OLD → $NEW"
+              CHANGED=$(echo "$CHANGED" | node -p "
+                const arr = JSON.parse(require('fs').readFileSync('/dev/stdin','utf-8'));
+                arr.push({dir:'$DIR_NAME',name:'$NAME',version:'$NEW'});
+                JSON.stringify(arr)
+              ")
+            fi
+          done
+
+          echo "matrix={\"include\":$CHANGED}" >> "$GITHUB_OUTPUT"
+
   publish:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.matrix != '{"include":[]}'
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    strategy:
+      matrix: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+      max-parallel: 1
     steps:
       - uses: actions/checkout@v4
 
@@ -18,54 +57,10 @@ jobs:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
 
-      - name: Parse tag
-        id: parse
-        run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          # 从右往左找第一个匹配 -X.Y.Z 的位置
-          VERSION="${TAG##*-}"
-          # 验证版本号格式
-          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+'; then
-            echo "::error::Tag 格式错误，应为 <package>-<version>，如 miscs-0.2.0"
-            exit 1
-          fi
-          PKG_PREFIX="${TAG%-*}"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "pkg_prefix=$PKG_PREFIX" >> "$GITHUB_OUTPUT"
-
-      - name: Find package directory
-        id: find
-        run: |
-          PKG_PREFIX="${{ steps.parse.outputs.pkg_prefix }}"
-          FOUND=""
-          for dir in packages/*/; do
-            name=$(basename "$dir")
-            if [ "$name" = "$PKG_PREFIX" ]; then
-              FOUND="$dir"
-              break
-            fi
-          done
-          if [ -z "$FOUND" ]; then
-            echo "::error::未找到匹配的包: $PKG_PREFIX"
-            echo "可用的包:"
-            for dir in packages/*/; do echo "  $(basename "$dir")"; done
-            exit 1
-          fi
-          echo "dir=$FOUND" >> "$GITHUB_OUTPUT"
-
-      - name: Set version
-        run: |
-          DIR="${{ steps.find.outputs.dir }}"
-          VERSION="${{ steps.parse.outputs.version }}"
-          cd "$DIR"
-          npm version "$VERSION" --no-git-tag-version
-
       - name: Install dependencies
         run: npm ci
 
-      - name: Publish
-        run: |
-          DIR="${{ steps.find.outputs.dir }}"
-          npm publish --access public --workspace "$DIR"
+      - name: Publish ${{ matrix.name }}@${{ matrix.version }}
+        run: npm publish --access public --workspace packages/${{ matrix.dir }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
