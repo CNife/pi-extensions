@@ -9,7 +9,7 @@ description: AI 开发工作流全景——流水线顺序、技能关系、使�
 
 ## 流水线
 
-```
+```text
 /grill → /plan → /plan-to-tasks → /write-code → /review-code
 ```
 
@@ -47,7 +47,7 @@ description: AI 开发工作流全景——流水线顺序、技能关系、使�
 
 ## 技能依赖关系
 
-```
+```text
 /manage-change（创建变更目录）
     │
     ├─ /grill（追问 + 领域对齐）
@@ -74,7 +74,7 @@ description: AI 开发工作流全景——流水线顺序、技能关系、使�
 
 ## 变更目录结构
 
-```
+```text
 changes/YYYYMMDD-<简写>/
 ├── plan.md              # 变更方案（目标、关键决策、用语）
 ├── CONTEXT.md           # 本次变更新增/修改的项目用语

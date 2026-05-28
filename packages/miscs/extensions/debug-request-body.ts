@@ -1,6 +1,6 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export default function (pi: ExtensionAPI) {
   const debugDir = process.env.PI_DEBUG_REQUEST_BODY;

@@ -1,0 +1,66 @@
+name: Publish Packages
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.changes.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect version changes
+        id: changes
+        run: |
+          CHANGED="[]"
+          for dir in packages/*/; do
+            PKG="$dir/package.json"
+            [ -f "$PKG" ] || continue
+
+            # 比较 HEAD 和 HEAD~1 的 version 字段
+            OLD=$(git show HEAD~1:"$PKG" 2>/dev/null | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf-8')).version" 2>/dev/null || echo "")
+            NEW=$(node -p "require('./$PKG').version")
+
+            if [ "$OLD" != "$NEW" ]; then
+              NAME=$(node -p "require('./$PKG').name")
+              DIR_NAME=$(basename "$dir")
+              echo "检测到变更: $NAME $OLD → $NEW"
+              CHANGED=$(echo "$CHANGED" | node -p "
+                const arr = JSON.parse(require('fs').readFileSync('/dev/stdin','utf-8'));
+                arr.push({dir:'$DIR_NAME',name:'$NAME',version:'$NEW'});
+                JSON.stringify(arr)
+              ")
+            fi
+          done
+
+          echo "matrix={\"include\":$CHANGED}" >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.matrix != '{"include":[]}'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      matrix: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+      max-parallel: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Publish ${{ matrix.name }}@${{ matrix.version }}
+        run: npm publish --access public --workspace packages/${{ matrix.dir }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

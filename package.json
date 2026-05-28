@@ -2,38 +2,21 @@
   "name": "cnife-pi-extensions",
   "version": "1.0.0",
   "private": true,
-  "keywords": [
-    "pi-package"
-  ],
-  "description": "CNife's pi agent extensions",
+  "workspaces": ["packages/*"],
   "scripts": {
-    "lint": "biome check ./extensions ./skills && rumdl check .",
-    "lint:fix": "biome check --write ./extensions ./skills && rumdl fmt .",
-    "format": "biome format --write ./extensions ./skills && rumdl fmt .",
-    "check": "biome check --write --unsafe ./extensions ./skills && rumdl fmt .",
+    "check": "npx biome check ./packages",
+    "check:fix": "npx biome check --write ./packages",
+    "format": "npx biome format --write ./packages",
+    "check:unsafe": "npx biome check --write --unsafe ./packages",
     "prepare": "husky || true"
   },
   "lint-staged": {
-    "{extensions,skills}/**/*.ts": [
+    "packages/**/*.ts": [
       "biome check --write"
     ],
     "**/*.md": [
       "rumdl fmt"
     ]
-  },
-  "pi": {
-    "extensions": [
-      "./extensions"
-    ],
-    "prompts": [
-      "./prompts"
-    ],
-    "skills": [
-      "./skills"
-    ]
-  },
-  "dependencies": {
-    "@plannotator/pi-extension": "^0.19.23"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.15",

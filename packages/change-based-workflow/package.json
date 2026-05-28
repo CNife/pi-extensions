@@ -1,0 +1,14 @@
+{
+  "name": "@cnife/pi-change-based-workflow",
+  "version": "0.1.0",
+  "private": false,
+  "keywords": [
+    "pi-package"
+  ],
+  "description": "Change-based development workflow skills for pi (grill, plan, write-code, review-code)",
+  "pi": {
+    "skills": [
+      "./skills"
+    ]
+  }
+}
