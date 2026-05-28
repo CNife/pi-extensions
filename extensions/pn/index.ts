@@ -10,6 +10,7 @@
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import { isAbsolute, resolve } from "node:path";
 import type {
   ExtensionAPI,
@@ -83,8 +84,8 @@ export default function pn(pi: ExtensionAPI): void {
   pi.registerCommand("pna", {
     description: "Open annotation UI for a markdown file or folder",
     handler: async (args, ctx) => {
-      const inputPath = (args ?? "").trim().replace(/^["']|["']$/g, "");
-      if (!inputPath) {
+      const normalized = normalizeUserPath(args ?? "");
+      if (!normalized) {
         ctx.ui.notify("Usage: /pna <file.md | folder/>", "error");
         return;
       }
@@ -97,9 +98,9 @@ export default function pn(pi: ExtensionAPI): void {
         return;
       }
 
-      const absPath = isAbsolute(inputPath)
-        ? inputPath
-        : resolve(ctx.cwd, inputPath);
+      const absPath = isAbsolute(normalized)
+        ? normalized
+        : resolve(ctx.cwd, normalized);
 
       if (!existsSync(absPath)) {
         ctx.ui.notify(`Not found: ${absPath}`, "error");
@@ -193,6 +194,22 @@ export default function pn(pi: ExtensionAPI): void {
       }
     },
   });
+}
+
+/** Normalize a user-provided path: strip quotes, expand ~ to home directory. */
+function normalizeUserPath(raw: string): string {
+  const trimmed = raw.trim();
+  const unquoted = trimmed.replace(/^["']|["']$/g, "");
+  return expandHomePath(unquoted);
+}
+
+function expandHomePath(input: string): string {
+  const home = homedir();
+  if (input === "~") return home;
+  if (input.startsWith("~/") || input.startsWith("~\\")) {
+    return home + input.slice(1);
+  }
+  return input;
 }
 
 function scanMarkdownFiles(dirPath: string, depth = 0): boolean {
