@@ -8,6 +8,7 @@
     "check:fix": "npx biome check --write ./packages",
     "format": "npx biome format --write ./packages",
     "check:unsafe": "npx biome check --write --unsafe ./packages",
+    "publish:pkg": "./scripts/publish.sh",
     "prepare": "husky || true"
   },
   "lint-staged": {
