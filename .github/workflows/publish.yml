@@ -9,39 +9,40 @@ permissions:
   id-token: write
 
 jobs:
-  detect-changes:
+  publish:
     runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.changes.outputs.matrix }}
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
 
-      - name: Detect version changes
-        id: changes
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - run: npm ci
+
+      - name: Detect and publish unpublished packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          CHANGED="[]"
           for dir in packages/*/; do
             PKG="${dir}package.json"
             [ -f "$PKG" ] || continue
 
-            OLD=$(git show HEAD~1:"$PKG" 2>/dev/null | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf-8')).version" 2>/dev/null || echo "")
-            NEW=$(node -p "require('./$PKG').version")
+            NAME=$(node -p "require('./$PKG').name")
+            LOCAL=$(node -p "require('./$PKG').version")
+            NPM=$(npm view "$NAME" version 2>/dev/null || echo "")
 
-            if [ "$OLD" != "$NEW" ]; then
-              NAME=$(node -p "require('./$PKG').name")
-              DIR_NAME=$(basename "$dir")
-              echo "检测到变更: $NAME $OLD → $NEW"
-              CHANGED=$(echo "$CHANGED" | node -p "
-                const arr = JSON.parse(require('fs').readFileSync('/dev/stdin','utf-8'));
-                arr.push({dir:'$DIR_NAME',name:'$NAME',version:'$NEW'});
-                JSON.stringify(arr)
-              ")
+            if [ "$LOCAL" != "$NPM" ]; then
+              echo "发布: $NAME@$LOCAL (npm: ${NPM:-无})"
+              npm publish --provenance --workspace "$NAME"
+            else
+              echo "跳过: $NAME@$LOCAL (已是最新)"
             fi
           done
-
-          echo "matrix={\"include\":$CHANGED}" >> "$GITHUB_OUTPUT"
 
   publish:
     needs: detect-changes
