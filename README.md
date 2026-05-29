@@ -11,6 +11,7 @@ Refer to [CONTEXT.md](CONTEXT.md) for the project's domain glossary.
 |---|------|------|
 | [`@cnife/pi-change-based-workflow`](#skills) | Skills | 变更驱动开发工作流：grill → plan → write-code → review |
 | [`@cnife/pi-execute-python`](#execute-python) | Extension | 用 uv 执行 Python，实时流式输出，自动依赖管理 |
+| [`@cnife/pi-cache-hit-rate`](#cache-hit-rate) | Extension | 在 footer 中显示当前会话累计缓存命中率 |
 | [`@cnife/pi-simple-plannotator`](#simple-plannotator) | Extension | 浏览器内代码审查 & Markdown 批注 |
 | [`@cnife/pi-miscs`](#miscs) | Extension | 调试 & 快捷退出等小工具 |
 
@@ -27,6 +28,7 @@ pi install git:github.com/CNife/pi-extensions
 ```bash
 pi install npm:@cnife/pi-change-based-workflow
 pi install npm:@cnife/pi-execute-python
+pi install npm:@cnife/pi-cache-hit-rate
 pi install npm:@cnife/pi-simple-plannotator
 pi install npm:@cnife/pi-miscs
 ```
@@ -96,6 +98,14 @@ pi install npm:@cnife/pi-miscs
 - 自定义 TUI 渲染
 - 进程组管理（detached + signal 清理）
 - 纯文本内容供 LLM 消费
+
+### cache-hit-rate
+
+在 pi footer 的状态行中显示当前会话的累计缓存命中率：
+
+- 文案格式：`Cached 99.99%`
+- 统计口径：`cacheRead / (input + cacheRead + cacheWrite)`
+- 颜色阈值：`<75%` 红，`75%-85%` 黄，`85%-95%` 默认前景色，`>=95%` 绿
 
 ### simple-plannotator
 
