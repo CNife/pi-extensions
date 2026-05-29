@@ -15,10 +15,12 @@ jobs:
       matrix: ${{ steps.changes.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
 
-      - name: Detect version changes
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Detect unpublished versions
         id: changes
         run: |
           CHANGED="[]"
@@ -26,16 +28,16 @@ jobs:
             PKG="${dir}package.json"
             [ -f "$PKG" ] || continue
 
-            OLD=$(git show HEAD~1:"$PKG" 2>/dev/null | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf-8')).version" 2>/dev/null || echo "")
-            NEW=$(node -p "require('./$PKG').version")
+            NAME=$(node -p "require('./$PKG').name")
+            LOCAL=$(node -p "require('./$PKG').version")
+            NPM=$(npm view "$NAME" version 2>/dev/null || echo "")
 
-            if [ "$OLD" != "$NEW" ]; then
-              NAME=$(node -p "require('./$PKG').name")
+            if [ "$LOCAL" != "$NPM" ]; then
               DIR_NAME=$(basename "$dir")
-              echo "检测到变更: $NAME $OLD → $NEW"
+              echo "需要发布: $NAME (npm: ${NPM:-无}, 本地: $LOCAL)"
               CHANGED=$(echo "$CHANGED" | node -p "
                 const arr = JSON.parse(require('fs').readFileSync('/dev/stdin','utf-8'));
-                arr.push({dir:'$DIR_NAME',name:'$NAME',version:'$NEW'});
+                arr.push({dir:'$DIR_NAME',name:'$NAME',version:'$LOCAL'});
                 JSON.stringify(arr)
               ")
             fi
