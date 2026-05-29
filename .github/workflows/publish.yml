@@ -9,21 +9,25 @@ permissions:
   id-token: write
 
 jobs:
-  detect-changes:
+  publish:
     runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.changes.outputs.matrix }}
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
+          registry-url: "https://registry.npmjs.org"
 
-      - name: Detect unpublished versions
-        id: changes
+      - run: npm ci
+
+      - name: Detect and publish unpublished packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          CHANGED="[]"
           for dir in packages/*/; do
             PKG="${dir}package.json"
             [ -f "$PKG" ] || continue
@@ -33,17 +37,12 @@ jobs:
             NPM=$(npm view "$NAME" version 2>/dev/null || echo "")
 
             if [ "$LOCAL" != "$NPM" ]; then
-              DIR_NAME=$(basename "$dir")
-              echo "需要发布: $NAME (npm: ${NPM:-无}, 本地: $LOCAL)"
-              CHANGED=$(echo "$CHANGED" | node -p "
-                const arr = JSON.parse(require('fs').readFileSync('/dev/stdin','utf-8'));
-                arr.push({dir:'$DIR_NAME',name:'$NAME',version:'$LOCAL'});
-                JSON.stringify(arr)
-              ")
+              echo "发布: $NAME@$LOCAL (npm: ${NPM:-无})"
+              npm publish --provenance --workspace "$NAME"
+            else
+              echo "跳过: $NAME@$LOCAL (已是最新)"
             fi
           done
-
-          echo "matrix={\"include\":$CHANGED}" >> "$GITHUB_OUTPUT"
 
   publish:
     needs: detect-changes
