@@ -23,7 +23,7 @@ jobs:
         run: |
           CHANGED="[]"
           for dir in packages/*/; do
-            PKG="$dir/package.json"
+            PKG="${dir}package.json"
             [ -f "$PKG" ] || continue
 
             OLD=$(git show HEAD~1:"$PKG" 2>/dev/null | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf-8')).version" 2>/dev/null || echo "")
