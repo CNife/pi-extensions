@@ -5,7 +5,7 @@
   "keywords": [
     "pi-package"
   ],
-  "description": "Change-based development workflow skills for pi (grill, plan, write-code, check-work)",,
+  "description": "Change-based development workflow skills for pi (grill, plan, write-code, check-work)",
   "homepage": "https://github.com/CNife/pi-extensions#readme",
   "bugs": {
     "url": "https://github.com/CNife/pi-extensions/issues"
