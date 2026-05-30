@@ -14,6 +14,10 @@ pi-extensions/
 ├── biome.json                             # 统一 lint/format 配置
 ├── tsconfig.json                          # 统一 TS 配置
 ├── packages/                              # 子包目录
+│   ├── cache-hit-rate/                    # @cnife/pi-cache-hit-rate
+│   │   ├── package.json
+│   │   ├── README.md
+│   │   └── extensions/cache-hit-rate.ts
 │   ├── execute-python/                    # @cnife/pi-execute-python
 │   │   ├── package.json
 │   │   └── extensions/execute-python.ts
@@ -48,7 +52,7 @@ pi-extensions/
 | `changes/<name>/adr/` | 变更内架构决策 | `/grill` 写入，完成后同步 docs/adr/ |
 | `docs/cnife-pi-workflow.md` | 技能架构 | 流水线顺序、技能分类、使用指南 |
 | `docs/deployment.md` | 部署原理 | pi install / pi update 的内部流程 |
-| `docs/troubleshooting.md` | 排查指南 | AI 排查本仓库 bug 时先读 |
+| `docs/troubleshooting.md` | 排查与测试指南：命令→代码、参数流转、扩展本地测试、tmux 交互调试、配置文件测试 |  |
 
 ## 技能架构
 
@@ -60,4 +64,4 @@ pi-extensions/
 - **Git 提交**：简短中文，一行内，不加前缀
 - **变更流程**：`grill → plan → plan-to-tasks → write-code → review-code`
 - **排查问题**：先读 `docs/troubleshooting.md`
-- **修改代码**：禁止直接修改 `~/.pi/agent/` 下已安装的文件。必须修改当前仓库文件，走完整的部署流程（`git commit` + `git push` + `pi update`）安装到 `~/.pi/agent`。本地测试用符号链接（见 `docs/troubleshooting.md`）
+- **修改代码**：禁止直接修改 `~/.pi/agent/` 下已安装的文件。必须修改当前仓库文件，走完整的部署流程（`git commit` + `git push` + `pi update`）安装到 `~/.pi/agent`。本地测试用符号链接或隔离加载（见 `docs/troubleshooting.md` 扩展本地测试章节）
