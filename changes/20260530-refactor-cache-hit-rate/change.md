@@ -6,9 +6,9 @@
 
 | # | 问题 | 结论 |
 |---|------|------|
-| 1 | 优化方向 | 验证核心公式正确性，重构指标设计为三均线系统 |
+| 1 | 优化方向 | 验证核心公式正确性，重构指标设计为多时间尺度系统 |
 | 2 | 核心公式验证 | `cacheRead / (input + cacheRead + cacheWrite)` 在所有 pi-ai provider 下正确 |
-| 3 | 指标设计 | 三均线：Current（单条）、Recent N（加权平均）、Total（累计），类似 K 线均线 |
+| 3 | 指标设计 | 多时间尺度指标：Current（单条）、Recent N（加权平均）、Total（累计），类似 K 线均线 |
 | 4 | Footer 格式 | `Cache C:12.34 R10:56.78 T:99.99`，数据不足显示 `--.--%`，Recent 不足 N 条时显示实际数量 |
 | 5 | Recent 加权方式 | 按 prompt token 数量加权 |
 | 6 | 颜色规则 | 三指标统一用配置文件定义的 colorRules，支持语义色名，默认阈值保留 |
@@ -25,7 +25,7 @@
 
 ### 方案摘要
 
-- **三均线指标**：Current / Recent N / Total，替代旧的累计 + delta 双指标
+- **多指标**：Current / Recent N / Total，替代旧的累计 + delta 双指标
 - **配置**：独立 JSON 文件，recentN + colorRules
 - **性能**：去掉 buildState() 双遍历，Total 改为增量累加
 - **事件**：model_select / compact / tree 清空 Recent，Total 永不重置
@@ -105,3 +105,66 @@ tasks.md, tasks/T01-config-module.md, tasks/T02-core-state.md, tasks/T03-footer-
 - T02：`CacheMetrics.recentSamples` 类型从单样本改为 `Sample[]`，补充 `model_change/compaction` 重置描述
 - T04：handler 去重（统一调用 `buildState()`），追加 `package.json` version bump 到 `0.2.0`
 - T03、T05：无变更
+
+---
+
+## 变更 v6：代码实现
+
+> 按 T01~T05 顺序实现全部代码，合并为一次重写（单文件耦合，不可分批）。
+
+### 修改文件
+
+| 文件 | 变更 |
+|------|------|
+| `packages/cache-hit-rate/extensions/cache-hit-rate.ts` | 189 行 → 267 行，完全重写 |
+| `packages/cache-hit-rate/package.json` | version 0.1.0 → 0.2.0 |
+| `packages/cache-hit-rate/README.md` | 双指标 → 多指标文档 |
+
+### 实现要点
+
+- **配置**：`getAgentDir()` 定位路径、`saveDefaultConfig()` 自动创建、`validateColorRules()` 覆盖校验、加载失败 early return 显示 `cache config error`
+- **状态**：`CacheMetrics`（current / recentSamples[] / 累计）、`buildState()` 单次遍历 getBranch()，遇 model_change/compaction entry 重置累计和样本
+- **格式化**：`Cache C:12.34 R10:56.78 T:99.99`、`applyColor()` 最后一条规则 ≤ 判断保证 100% 着色
+- **事件**：5 个 handler 均调用 `buildState()`，message_end 增量更新
+- **测试**：Python 独立验证 validateColorRules / calcWeightedPercent / applyColor 全部通过
+- **编译**：TypeScript --noEmit 无错误
+
+### 任务状态
+
+| ID | 子任务 | 状态 |
+|----|--------|------|
+| T1 | 配置文件加载与验证 | ✅ 已完成 |
+| T2 | 核心状态与采样逻辑 | ✅ 已完成 |
+| T3 | Footer 格式化与颜色 | ✅ 已完成 |
+| T4 | 事件处理重写 | ✅ 已完成 |
+| T5 | 更新 README 文档 | ✅ 已完成 |
+
+---
+
+## 变更 v7：代码审查
+
+> 使用 check 技能审查实现代码（commit `27f9ee9`），对照 plan.md v3 终稿。
+
+### 结论
+
+- 硬性阻塞：0
+- 逻辑错误：0
+- plan 偏离：0
+
+### 发现项
+
+| # | 严重度 | 涉及文件 | 问题 |
+|---|--------|---------|------|
+| 1 | 📝 措辞 | 8 个文件 | 「多指标」说法不准确，Current 不是均线，只有 Recent N 是——应改为「多指标」或类似表述 |
+| 2 | 📝 遗漏 | README.md | 配置路径未说明受 `PI_CODING_AGENT_DIR` 环境变量影响 |
+| 3 | 🔧 改善 | cache-hit-rate.ts | `validateColorRules` 浮点比较用 0.001 epsilon，应改为严格比较或加注释 |
+| 4 | 🔧 改善 | cache-hit-rate.ts | `applyColor` 无匹配规则时的 fallback 缺少注释 |
+
+### 执行
+
+4 项全部修正：
+
+- #1：8 个文件「三均线」→「多指标」/「多时间尺度」
+- #2：README.md 配置文件章节新增 `PI_CODING_AGENT_DIR` 路径说明
+- #3：`validateColorRules` 浮点比较添加 epsilon 注释
+- #4：`applyColor` fallback 添加防御性注释

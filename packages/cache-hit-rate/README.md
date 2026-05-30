@@ -1,6 +1,6 @@
 # @cnife/pi-cache-hit-rate
 
-在 pi 的 footer 状态行中显示**三均线缓存命中率**，类似 K 线均线系统。
+在 pi 的 footer 状态行中显示三个时间尺度的**缓存命中率**，类似 K 线均线系统。
 
 ## 功能
 
@@ -37,6 +37,8 @@ Cache C:85.50 R10:78.30 T:92.10
 - 范围 `[low, high)` 左闭右开，最后一条 `<high> ≤ 100` 时为闭区间以覆盖 100%
 - 规则必须完整覆盖 `[0, 100]`，无重叠、无空缺
 - 修改配置后需重启 pi 生效
+
+配置路径为 `<agent-dir>/cnife-cache-hit-rate.json`，`<agent-dir>` 由 `PI_CODING_AGENT_DIR` 环境变量决定，默认为 `~/.pi/agent`。
 
 ### 事件处理
 

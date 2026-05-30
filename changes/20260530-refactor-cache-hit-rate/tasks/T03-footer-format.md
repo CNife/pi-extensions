@@ -6,7 +6,7 @@ depends_on: [T01-config-module, T02-core-state]
 
 # T3: Footer 格式化与颜色
 
-**目标**：实现三均线格式的 footer 字符串生成和颜色应用。
+**目标**：实现多指标格式的 footer 字符串生成和颜色应用。
 
 **涉及文件**：
 

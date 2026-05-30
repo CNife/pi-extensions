@@ -15,7 +15,7 @@ depends_on: [T04-event-handlers]
 **具体内容**：
 
 1. 更新"功能"章节：
-   - 描述三均线指标（Current / Recent N / Total）
+   - 描述三个指标（Current / Recent N / Total）
    - Footer 格式示例
    - 颜色规则说明
 2. 更新配置文件章节：

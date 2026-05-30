@@ -8,8 +8,7 @@ import type {
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
 /**
- * Cache Hit Rate — 在 pi footer 显示三均线缓存命中率：
- * Current（瞬时）、Recent N（短期加权）、Total（累计）。
+ * Cache Hit Rate — 在 pi footer 显示 Current / Recent N / Total 三个时间尺度的缓存命中率。
  */
 
 // ──── 配置 ────────────────────────────────────────────────────
@@ -61,6 +60,7 @@ function validateColorRules(rules: ColorRule[]): boolean {
 
     // 相邻规则必须连续
     if (i < sorted.length - 1) {
+      // 允许 0.001 浮点误差，避免手写 JSON 的微小精度偏差误判
       if (Math.abs(rule.high - sorted[i + 1].low) > 0.001) return false;
       if (rule.low >= rule.high) return false;
     } else {
@@ -249,6 +249,7 @@ function applyColor(
     }
   }
 
+  // 防御性 fallback：百分比不在任何规则区间时不着色
   return text;
 }
 
