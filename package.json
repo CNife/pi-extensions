@@ -18,8 +18,7 @@
       "rumdl fmt"
     ],
     "**/package.json": [
-      "npm install --package-lock-only"
-    ]
+      "bash -c 'npm install --package-lock-only'"
     ]
   },
   "devDependencies": {
