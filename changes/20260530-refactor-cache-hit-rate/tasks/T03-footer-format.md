@@ -1,5 +1,5 @@
 ---
-status: 待开始
+status: 已完成
 priority: 高
 depends_on: [T01-config-module, T02-core-state]
 ---
