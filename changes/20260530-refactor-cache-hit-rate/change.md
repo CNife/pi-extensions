@@ -32,20 +32,76 @@
 
 ---
 
-## 变更 v3：plan 审阅修正
+## 变更 v3：check 审查修正
 
-> 使用 check 技能审查 plan.md，发现 3 处硬性阻塞和 4 处设计缺陷，经讨论后修正。
+> 使用 check 技能审查 plan.md v2，发现内部矛盾和设计缺陷，经讨论后修正。
 
 ### 修正项
 
-| # | 问题 | 修正前 | 修正后 |
-|---|------|--------|--------|
-| 1 | plan 内部矛盾 | 第 5 节说 session_start 不再全量重建 Total，与事件表冲突 | 删除 `session_start /`，第 5 节仅针对 session_tree/compact/model_select |
-| 2 | Total 数据源 | 用 `getEntries()` 遍历全部会话历史 | 改为 `getBranch()` 仅遍历当前分支 |
-| 3 | model_select 时 Total 行为 | 保留不重置 | 改为基于当前位置重算（遍历 getBranch() 从当前点重新累计） |
-| 4 | session_tree 时 Current | 自然覆盖（保留旧值） | 改为直接清空 |
-| 5 | compact/tree 时 Total | 保留不重置 | 同上，基于当前位置重算 |
-| 6 | 颜色规则 | 100% 命中率落在 [95, 100) 开区间外 | 明确最后一条规则 high ≤ 100 时用 ≤ 判断，保证全覆盖 |
-| 7 | 配置加载失败 | 未定义降级行为 | 失败时显示 `cache config error` |
-| 8 | Footer 格式 | 未区分 0 条 vs ≥1 条 | 0 条三个指标均显示 `--.--%`，≥1 条三个同时有值 |
-| 9 | 初始化遍历 | 保留 buildState() 双遍历（Total 走 getEntries，Recent 走 getBranch） | 一次遍历 getBranch()，遇到 model_change/compaction entry 清空累积状态并继续 |
+| # | 修正 | v2 旧设计 | v3 终稿 |
+|---|------|----------|--------|
+| 1 | Total 数据源 | getEntries() 全会话 | getBranch() 仅当前分支 |
+| 2 | Current 事件处理 | 自然覆盖（保留旧值） | model_select/compact/tree 直接清空 |
+| 3 | Total 事件处理 | 保留不重置 | 基于当前位置重算 |
+| 4 | 初始化遍历 | 双遍历 | 单次 getBranch()，遇 model_change/compaction 清空并继续 |
+| 5 | 0 条样本显示 | 未明确定义 | 三个指标均显示 --.--%，Recent 后缀 0 |
+| 6 | 颜色边界 100% | 未处理 | 最后一条 high ≤ 100 用 ≤ 判断 |
+| 7 | 配置失败处理 | 未定义 | 显示 cache config error |
+| 8 | colorRules 验证 | 未定义 | 覆盖 [0, 100]、无重叠、无空缺 |
+
+---
+
+## 变更 v4：任务拆解
+
+### 产出文件
+
+tasks.md, tasks/T01-config-module.md, tasks/T02-core-state.md, tasks/T03-footer-format.md, tasks/T04-event-handlers.md, tasks/T05-update-readme.md
+
+### 变更概述
+
+将 plan.md 拆解为 5 个可独立验证的子任务，按 5 个串行层排列（单文件重构，水平分层）。
+
+### 任务摘要
+
+| ID | 子任务 | 涉及文件 |
+|----|--------|---------|
+| T1 | 配置文件加载与验证 | cache-hit-rate.ts |
+| T2 | 核心状态与采样逻辑 | cache-hit-rate.ts |
+| T3 | Footer 格式化与颜色 | cache-hit-rate.ts |
+| T4 | 事件处理重写 | cache-hit-rate.ts |
+| T5 | 更新 README 文档 | README.md |
+
+### 并行分层
+
+| 层 | 包含任务 | 依赖 |
+|----|---------|------|
+| 1 | T1 | 无 |
+| 2 | T2 | T1 |
+| 3 | T3 | T1, T2 |
+| 4 | T4 | T2, T3 |
+| 5 | T5 | T4 |
+
+---
+
+## 变更 v5：任务拆解审阅
+
+> 使用 check 技能审查 task 文件，对照 plan.md v3 终稿检查遗漏和错误。
+
+### 发现项
+
+| # | 严重度 | 涉及任务 | 问题 |
+|---|--------|---------|------|
+| 1 | 🔴 阻塞 | T01 | 配置路径硬编码 `~/.pi/agent/`，应用 `getAgentDir()` 以支持 `PI_CODING_AGENT_DIR` |
+| 2 | 🔴 阻塞 | T02 | `CacheMetrics` 类型 `recentN` 字段为单样本，应为 `Sample[]` 数组 |
+| 3 | 🟡 遗漏 | T01 | colorRules 验证逻辑需明确最后一条规则 high ≤ 100 为闭区间（与 T03 着色一致） |
+| 4 | 🟡 遗漏 | T01+T04 | 未指定 `loadConfig()` 调用时机，应在模块顶层加载为闭包变量 |
+| 5 | 🟡 歧义 | T04 | handler 描述「清空 Recent N 和 Current」多余，实际 `buildState()` 已产出正确状态 |
+| 6 | 🟡 遗漏 | T04/T05 | 未提及 `package.json` version 从 `0.1.0` bump 到 `0.2.0`（breaking change） |
+| 7 | 🟡 措辞 | T04 | 验证描述「Total 不变」与 plan「基于当前位置重算」不一致 |
+
+### 执行
+
+- T01：配置路径改为 `getAgentDir()`，补充验证规则（最后一条闭区间）、`loadConfig()` 调用时机
+- T02：`CacheMetrics.recentSamples` 类型从单样本改为 `Sample[]`，补充 `model_change/compaction` 重置描述
+- T04：handler 去重（统一调用 `buildState()`），追加 `package.json` version bump 到 `0.2.0`
+- T03、T05：无变更
