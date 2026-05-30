@@ -1,5 +1,5 @@
 ---
-status: 待开始
+status: 完成
 priority: 高
 depends_on: [T01-check-work-skill, T02-init-skills]
 ---

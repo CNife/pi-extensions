@@ -54,32 +54,7 @@ depends_on: []
 
 ## 输出
 
-在 `$CHANGE_DIR/` 下创建 `tasks/` 目录，每个子任务一个 `.md` 文件。同时在 `$CHANGE_DIR/` 下创建 `tasks.md` 汇总文件：
-
-```markdown
-# 任务拆解
-
-> 基于：plan.md
-> 生成时间：YYYY-MM-DD
-> 总子任务数：N / 并行层数：M
-
-## 子任务清单
-
-| ID | 子任务 | 涉及文件 | 验证方式 |
-|----|--------|---------|---------|
-| T1 | xxx | a.py | xxx |
-
-## 并行分层计划
-
-### 第 1 层（无依赖，可并行）
-
-- T1: xxx
-- T3: xxx
-
-### 第 2 层（依赖第 1 层）
-
-- T2: xxx（依赖 T1）
-```
+在 `$CHANGE_DIR/` 下创建 `tasks/` 目录，每个子任务一个 `.md` 文件。
 
 ## change.md 追加
 
@@ -90,7 +65,7 @@ depends_on: []
 
 ## 产出文件
 
-tasks.md, tasks/T01-xxx.md, ...
+tasks/T01-xxx.md, ...
 
 ## 变更概述
 
@@ -114,4 +89,4 @@ tasks.md, tasks/T01-xxx.md, ...
 
 - plan.md 不存在或无法解析 → 停止
 - plan.md 中存在无法确定子任务边界的模糊条目 → 提问，不猜测
-- 所有 task 文件 + tasks.md 写入完毕且 change.md 追加完毕 → 停止
+- 所有 task 文件写入完毕且 change.md 追加完毕 → 停止

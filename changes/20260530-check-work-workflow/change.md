@@ -184,3 +184,77 @@ plan.md（新增关键决策 #11~#15）
 - **工作树状态**：`main` 分支
 - **验证命令**：无（方案审查，无代码可运行）
 - **doc debt**：无
+
+---
+
+## 变更 v4：编码完成 [执行]
+
+### 产出文件
+
+- `skills/check-work/SKILL.md`（新建）
+- `skills/init-builder/SKILL.md`（新建）
+- `skills/init-checker/SKILL.md`（新建）
+- `skills/cnife-pi-workflow/SKILL.md`（修改）
+- `skills/plan-to-tasks/SKILL.md`（修改）
+- `skills/write-code/SKILL.md`（修改）
+- `skills/review-code/SKILL.md`（删除）
+- `README.md`（修改）
+- `docs/cnife-pi-workflow.md`（修改）
+
+### 执行摘要
+
+| task | 状态 |
+|------|------|
+| T01 | 完成 |
+| T02 | 完成 |
+| T03 | 完成 |
+
+### 变更文件清单
+
+| 文件 | 对应任务 | 操作 |
+|------|---------|------|
+| skills/check-work/SKILL.md | T01 | 新建 |
+| skills/init-builder/SKILL.md | T02 | 新建 |
+| skills/init-checker/SKILL.md | T02 | 新建 |
+| skills/cnife-pi-workflow/SKILL.md | T03 | 修改 |
+| skills/plan-to-tasks/SKILL.md | T03 | 修改 |
+| skills/write-code/SKILL.md | T03 | 修改 |
+| skills/review-code/ | T03 | 删除 |
+| README.md | T03 | 修改 |
+| docs/cnife-pi-workflow.md | T03 | 修改 |
+
+---
+
+## 审查结论 v4：编码完成 [审查]
+
+### 审查范围
+
+- **审查产物**：`check-work/SKILL.md`、`init-builder/SKILL.md`、`init-checker/SKILL.md`、`cnife-pi-workflow/SKILL.md`、`plan-to-tasks/SKILL.md`、`write-code/SKILL.md`、`README.md`、`docs/cnife-pi-workflow.md`
+- **对照基线**：`tasks/T01-check-work-skill.md`、`tasks/T02-init-skills.md`、`tasks/T03-update-existing.md`
+- **审查深度**：Standard（代码级审查）
+
+### 审查发现
+
+#### ✅ 已完成的任务
+
+| 任务 | 状态 | 验证 |
+|------|------|------|
+| T01：创建 check-work 技能 | ✅ 完成 | 文件存在，格式正确 |
+| T02：创建 init-builder / init-checker 技能 | ✅ 完成 | 两个文件均存在，frontmatter 正确 |
+| T03：更新现有技能和文档 | ✅ 完成 | review-code 已删除，README/docs 已更新 |
+
+#### 🔴 硬性阻塞
+
+无。
+
+#### 🟡 遗漏
+
+| # | 位置 | 问题 | 建议 |
+|---|------|------|------|
+| 1 | `handoff/SKILL.md` 第52行 | 残留 `review-code` 引用 | 执行 Agent 改为 `check-work` |
+
+### 验证状态
+
+- **工作树状态**：`main` 分支
+- **验证命令**：无（代码审查，无测试命令）
+- **doc debt**：无

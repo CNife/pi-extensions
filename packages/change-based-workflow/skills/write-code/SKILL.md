@@ -12,7 +12,6 @@ argument-hint: "[变更目录]"
 
 - **任务来源**：`$CHANGE_DIR/tasks/` 下所有 task 文件，按并行分层和依赖顺序执行
 - **上下文**：`$CHANGE_DIR/plan.md`
-- **汇总**：`$CHANGE_DIR/tasks.md`
 
 ## TDD 红绿重构
 
