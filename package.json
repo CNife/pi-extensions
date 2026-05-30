@@ -16,6 +16,10 @@
     ],
     "**/*.md": [
       "rumdl fmt"
+    ],
+    "**/package.json": [
+      "npm install --package-lock-only"
+    ]
     ]
   },
   "devDependencies": {
