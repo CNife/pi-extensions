@@ -1,11 +1,11 @@
 {
   "name": "@cnife/pi-change-based-workflow",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "private": false,
   "keywords": [
     "pi-package"
   ],
-  "description": "Change-based development workflow skills for pi (grill, plan, write-code, review-code)",
+  "description": "Change-based development workflow skills for pi (grill, plan, write-code, check-work)",,
   "homepage": "https://github.com/CNife/pi-extensions#readme",
   "bugs": {
     "url": "https://github.com/CNife/pi-extensions/issues"
