@@ -168,3 +168,27 @@ tasks.md, tasks/T01-config-module.md, tasks/T02-core-state.md, tasks/T03-footer-
 - #2：README.md 配置文件章节新增 `PI_CODING_AGENT_DIR` 路径说明
 - #3：`validateColorRules` 浮点比较添加 epsilon 注释
 - #4：`applyColor` fallback 添加防御性注释
+
+---
+
+## 变更 v8：端到端验证
+
+> 使用 `pi -ne -ns -e` 精确加载被测扩展，tmux 交互式测试 7 个场景。
+
+### 测试环境
+
+```bash
+pi --no-extensions --no-skills -e packages/cache-hit-rate/extensions/cache-hit-rate.ts --models deepseek/deepseek-v4-flash,deepseek/deepseek-v4-pro --no-session
+```
+
+### 测试结果
+
+| # | 场景 | Footer 输出 | 结果 |
+|---|------|-----------|------|
+| 1 | 0 条样本 | `Cache C:--.-- R0:--.-- T:--.--` | ✅ |
+| 2 | 单轮对话 | `Cache C:0.00 R1:0.00 T:0.00` | ✅ |
+| 3 | 多轮对话（加权平均） | `Cache C:95.85 R2:48.05 T:48.05` | ✅ |
+| 4 | 模型切换（瞬时） | `Cache C:--.-- R0:--.-- T:--.--` | ✅ |
+| 5 | 模型切换后发消息 | `Cache C:95.46 R1:95.46 T:95.46` | ✅ |
+| 6 | 非法 JSON 配置 | `cache config error` | ✅ |
+| 7 | 配置删除后重启 | 自动创建默认配置 | ✅ |
