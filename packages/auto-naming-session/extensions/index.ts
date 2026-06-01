@@ -234,16 +234,29 @@ function parseModelRef(
   return { provider: parts[0], id: parts[1] };
 }
 
+// ──── Constants ────────────────────────────────────────────────
+
+const STATUS_KEY = "auto-naming";
+
+function setConfigErrorStatus(ctx: {
+  ui: {
+    setStatus: (key: string, text: string) => void;
+    theme: { fg: (style: string, text: string) => string };
+  };
+}): void {
+  ctx.ui.setStatus(
+    STATUS_KEY,
+    ctx.ui.theme.fg("error", "auto-naming config error"),
+  );
+}
+
 // ──── Entry Point ───────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
   const config = loadConfig();
   if (!config) {
     pi.on("session_start", (_event, ctx) => {
-      ctx.ui.setStatus(
-        "auto-naming",
-        ctx.ui.theme.fg("error", "auto-naming config error"),
-      );
+      setConfigErrorStatus(ctx);
     });
     return;
   }
