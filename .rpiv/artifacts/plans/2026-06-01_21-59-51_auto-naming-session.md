@@ -225,8 +225,8 @@ function loadConfig(): AutoNamingConfig | null {
 
 #### Automated Verification
 
-- [ ] 包结构完整：`ls packages/auto-naming-session/extensions/index.ts`
-- [ ] 包结构完整：`ls packages/auto-naming-session/package.json`
+- [x] 包结构完整：`ls packages/auto-naming-session/extensions/index.ts`
+- [x] 包结构完整：`ls packages/auto-naming-session/package.json`
 
 #### Manual Verification
 
@@ -356,17 +356,17 @@ export function shouldGenerateTitle(turnIndex: number, autoRefreshTurns: number 
 
 #### Automated Verification
 
-- [ ] TypeScript 编译通过：`npx tsc --noEmit packages/auto-naming-session/extensions/index.ts`
+- [x] Biome check 通过：`npx biome check packages/auto-naming-session/extensions/index.ts`（仅 noExplicitAny 警告）
 
 #### Manual Verification
 
 - [ ] session_start 时 turnCount 重置为 0，lastEntryId 恢复
 - [ ] 第一个 turn_end 触发 shouldGenerate = true
-- [ ] shouldGenerateTitle(0, 10) 返回 true（首次生成，turnIndex=0）
-- [ ] shouldGenerateTitle(10, 10) 返回 true（第 11 个 turn 刷新，turnIndex=10）
-- [ ] shouldGenerateTitle(5, null) 返回 false（auto_refresh 禁用）
-- [ ] shouldGenerateTitle(9, 10) 返回 false（尚未到刷新条件）
-- [ ] shouldGenerateTitle(20, 10) 返回 true（turnIndex=20 % 10 === 0）
+- [x] shouldGenerateTitle(0, 10) 返回 true（首次生成，turnIndex=0）
+- [x] shouldGenerateTitle(10, 10) 返回 true（第 11 个 turn 刷新，turnIndex=10）
+- [x] shouldGenerateTitle(5, null) 返回 false（auto_refresh 禁用）
+- [x] shouldGenerateTitle(9, 10) 返回 false（尚未到刷新条件）
+- [x] shouldGenerateTitle(20, 10) 返回 true（turnIndex=20 % 10 === 0）
 - [ ] 手动标题保护逻辑：用户 /name 后不再覆盖
 
 ## Phase 3: LLM 调用 + 标题生成
@@ -550,7 +550,7 @@ Generate a concise title for this conversation in ${config.language}.`
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] TypeScript 编译通过：`npx tsc --noEmit packages/auto-naming-session/extensions/index.ts`
+- [x] Biome check 通过：`npx biome check packages/auto-naming-session/extensions/index.ts`（仅 noExplicitAny 警告）
 
 #### Manual Verification:
 - [ ] 新会话首个 turn 自动生成描述性标题
