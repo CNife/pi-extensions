@@ -34,12 +34,15 @@ jobs:
 
             NAME=$(node -p "require('./$PKG').name")
             LOCAL=$(node -p "require('./$PKG').version")
-            NPM=$(npm view "$NAME" version 2>/dev/null || echo "")
 
-            if [ "$LOCAL" != "$NPM" ]; then
-              echo "发布: $NAME@$LOCAL (npm: ${NPM:-无})"
-              npm publish --provenance --workspace "$NAME"
+            # 查所有已发布版本（而非仅 latest），避免注册表传播延迟
+            VERSIONS=$(npm view "$NAME" versions --json 2>/dev/null || echo "[]")
+            ALREADY=$(echo "$VERSIONS" | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).includes('$LOCAL')" 2>/dev/null || echo false)
+
+            if [ "$ALREADY" = "true" ]; then
+              echo "跳过: $NAME@$LOCAL (已发布)"
             else
-              echo "跳过: $NAME@$LOCAL (已是最新)"
+              echo "发布: $NAME@$LOCAL"
+              npm publish --provenance --workspace "$NAME"
             fi
           done
