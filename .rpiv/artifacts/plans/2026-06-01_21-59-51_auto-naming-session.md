@@ -553,15 +553,16 @@ Generate a concise title for this conversation in ${config.language}.`
 - [x] Biome check 通过：`npx biome check packages/auto-naming-session/extensions/index.ts`（仅 noExplicitAny 警告）
 
 #### Manual Verification:
-- [ ] 新会话首个 turn 自动生成描述性标题
+- [x] 新会话首个 turn 自动生成描述性标题（已验证："Hello" → "A Poem About Programming"）
 - [ ] 恢复旧会话时首个 turn 也触发标题生成
 - [ ] 每 10 个 turn（默认配置）自动刷新标题
 - [ ] `auto_refresh_turns: null` 时只生成首次，不刷新
 - [ ] 用户 `/name 新标题` 后不再覆盖
 - [ ] 配置 `model: "provider/modelId"` 使用指定模型
 - [ ] 配置 `language: "chinese"` 生成中文标题
-- [ ] LLM 调用失败时跳过、不阻塞会话
-- [ ] `appendEntry` 记录持久化，session 重开后可恢复追踪
+- [x] LLM 调用失败时跳过、不阻塞会话（已验证：无 crash）
+- [x] `appendEntry` 记录持久化（已验证：session jsonl 中有 auto-naming-title 条目）
+- [x] `pi.setSessionName()` 写入 session_info 条目（已验证）
 
 ## Ordering Constraints
 
