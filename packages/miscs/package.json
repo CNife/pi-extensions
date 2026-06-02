@@ -1,11 +1,11 @@
 {
   "name": "@cnife/pi-miscs",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "private": false,
   "keywords": [
     "pi-package"
   ],
-  "description": "Miscellaneous small pi extensions (debug, exit)",
+  "description": "Miscellaneous small pi extensions and skills (debug, exit, measure-tokens)",
   "homepage": "https://github.com/CNife/pi-extensions#readme",
   "bugs": {
     "url": "https://github.com/CNife/pi-extensions/issues"
@@ -23,6 +23,9 @@
   "pi": {
     "extensions": [
       "./extensions"
+    ],
+    "skills": [
+      "./skills"
     ]
   },
   "peerDependencies": {
