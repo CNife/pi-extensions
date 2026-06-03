@@ -1,21 +1,23 @@
 # @cnife/pi-cache-hit-rate
 
-在 pi 的 footer 状态行中显示三个时间尺度的**缓存命中率**，类似 K 线均线系统。
+在 pi 的 footer 状态行中显示当前会话的**缓存命中率**和**缓存失效**指标。
 
 ## 功能
 
 - **Current (C)**：最新一条 assistant message 的缓存命中率，反映瞬时缓存状态
-- **Recent N (R{N})**：最近 N 条 assistant message 按 prompt token 加权的平均命中率，反映短期趋势
 - **Total (T)**：当前分支全部 assistant message 的累计加权命中率，反映长期基准
+- **Real Hit Rate (R)**：有效缓存命中率，排除缓存写入带来的虚高，`R = (1 − Miss / non-cache-input) × 100`
+- **Miss (M)**：累计缓存失效 token 数量，反映因缓存未命中导致的额外输入开销
 
 ### Footer 格式
 
 ```text
-Cache C:85.50 R10:78.30 T:92.10
+Cache C:85.50 T:92.10 R:96.30 M:1.2k
 ```
 
-- 无数据时显示 `Cache C:--.-- R0:--.-- T:--.--`
-- Recent 实际样本数不足 N 条时，显示实际数量（如 `R3:56.78`）
+- 无数据时显示 `Cache C:--.-- T:--.-- R:--.-- M:--`
+- C/T/R 依据颜色规则着色：绿（优）、黄（一般）、红（差）
+- M 使用紧凑格式（k/M），不着色
 
 ### 颜色规则
 
@@ -23,7 +25,6 @@ Cache C:85.50 R10:78.30 T:92.10
 
 ```json
 {
-  "recentN": 10,
   "colorRules": [
     { "low": 0,  "high": 75,  "color": "error" },
     { "low": 75, "high": 85,  "color": "warning" },
@@ -42,8 +43,19 @@ Cache C:85.50 R10:78.30 T:92.10
 
 ### 事件处理
 
-- **切换模型 / Compaction / 树导航**：清空 Current 和 Recent N，Total 基于当前分支位置重建
-- 每次 assistant message 结束时增量更新三项指标
+- **切换模型 / Compaction / 树导航**：清空所有累计指标，基于当前分支位置重建
+- 每次 assistant message 结束时增量更新四项指标
+
+### 指标说明
+
+| 指标 | 含义 | 计算公式 | 备注 |
+|------|------|----------|------|
+| C | 当前消息缓存命中率 | cacheRead / promptTokens | 瞬时值 |
+| T | 累计缓存命中率 | ΣcacheRead / ΣpromptTokens | 长期基准 |
+| R | 有效缓存命中率 | (1 − ΣMiss / (ΣpromptTokens − ΣcacheRead)) × 100 | 排除缓存写入干扰 |
+| M | 累计失效 token | Σmax(0, prevPromptTokens − cacheRead) | token 绝对值 |
+
+Miss 通过对比相邻请求计算：上次请求的 `input + cacheRead + cacheWrite` 减去本次的 `cacheRead`（正值部分）。模型切换或 compaction 后归零。
 
 ## 安装
 
@@ -60,4 +72,4 @@ pi install npm:@cnife/pi-cache-hit-rate
 | 现象 | 原因 | 解决 |
 |------|------|------|
 | Footer 显示 `cache config error` | `cnife-cache-hit-rate.json` JSON 非法或 colorRules 不满足约束 | 删除配置文件让插件自动重建，或按格式修正 |
-| Footer 显示 `--.--%` | 当前会话还没有有效的 assistant message | 发送一条消息后会自动更新 |
+| Footer 显示 `--.--` | 当前会话还没有有效的 assistant message | 发送一条消息后会自动更新 |
