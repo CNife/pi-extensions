@@ -8,7 +8,7 @@ import type {
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
 /**
- * Cache Hit Rate — 在 pi footer 显示 Current / Recent N / Total 三个时间尺度的缓存命中率。
+ * Cache Hit Rate — 在 pi footer 显示 Current / Total / Real Hit Rate / Miss 四个缓存指标。
  */
 
 // ──── 配置 ────────────────────────────────────────────────────
@@ -23,12 +23,10 @@ type ColorRule = {
 };
 
 type CacheHitRateConfig = {
-  recentN: number;
   colorRules: ColorRule[];
 };
 
 const DEFAULT_CONFIG: CacheHitRateConfig = {
-  recentN: 10,
   colorRules: [
     { low: 0, high: 75, color: "error" },
     { low: 75, high: 85, color: "warning" },
@@ -99,14 +97,12 @@ function loadConfig(): CacheHitRateConfig | null {
   if (
     typeof parsed !== "object" ||
     parsed === null ||
-    typeof (parsed as Record<string, unknown>).recentN !== "number" ||
     !Array.isArray((parsed as Record<string, unknown>).colorRules)
   ) {
     return null;
   }
 
-  const obj = parsed as { recentN: number; colorRules: unknown[] };
-  if (obj.recentN < 1) return null;
+  const obj = parsed as { colorRules: unknown[] };
 
   const rules: ColorRule[] = [];
   for (const r of obj.colorRules) {
@@ -124,7 +120,12 @@ function loadConfig(): CacheHitRateConfig | null {
 
   if (!validateColorRules(rules)) return null;
 
-  return { recentN: obj.recentN, colorRules: rules };
+  // 拒绝含 recentN 的旧配置文件（breaking change）
+  if ("recentN" in obj) {
+    return null;
+  }
+
+  return { colorRules: rules };
 }
 
 // ──── 核心状态 ────────────────────────────────────────────────
@@ -136,18 +137,29 @@ type Sample = {
 
 type CacheMetrics = {
   current: Sample | null;
-  recentSamples: Sample[];
   totalCacheReadTokens: number;
   totalPromptTokens: number;
+  totalMissTokens: number;
+  prevPromptTokens: number;
 };
 
 function createEmptyState(): CacheMetrics {
   return {
     current: null,
-    recentSamples: [],
     totalCacheReadTokens: 0,
     totalPromptTokens: 0,
+    totalMissTokens: 0,
+    prevPromptTokens: 0,
   };
+}
+
+// ──── 工具函数 ────────────────────────────────────────────────
+
+/** 紧凑数字格式化：999 → "999", 1234 → "1.2k", 1234567 → "1.2M" */
+function fmtCompact(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 1_000_000) return `${(n / 1000).toFixed(1)}k`;
+  return `${(n / 1_000_000).toFixed(1)}M`;
 }
 
 function getUsageSample(message: AssistantMessage): Sample | undefined {
@@ -164,29 +176,20 @@ function getUsageSample(message: AssistantMessage): Sample | undefined {
   return { cacheRead, promptTokens };
 }
 
-function calcWeightedPercent(samples: Sample[]): number | null {
-  let totalCacheRead = 0;
-  let totalPrompt = 0;
-  for (const s of samples) {
-    totalCacheRead += s.cacheRead;
-    totalPrompt += s.promptTokens;
-  }
-  if (totalPrompt <= 0) return null;
-  return (totalCacheRead / totalPrompt) * 100;
-}
-
-/** 单次遍历 getBranch()，遇 model_change/compaction entry 重置累计状态。 */
-function buildState(ctx: ExtensionContext, recentN: number): CacheMetrics {
+/** 单次遍历 getBranch()，遇 model_change/compaction entry 重置累计状态。相邻样本逐对比较计算 miss。 */
+function buildState(ctx: ExtensionContext): CacheMetrics {
   let totalCacheReadTokens = 0;
   let totalPromptTokens = 0;
-  const recentSamples: Sample[] = [];
+  let totalMissTokens = 0;
+  let prevPromptTokens = 0;
   let current: Sample | null = null;
 
   for (const entry of ctx.sessionManager.getBranch()) {
     if (entry.type === "model_change" || entry.type === "compaction") {
       totalCacheReadTokens = 0;
       totalPromptTokens = 0;
-      recentSamples.length = 0;
+      totalMissTokens = 0;
+      prevPromptTokens = 0;
       current = null;
       continue;
     }
@@ -198,21 +201,22 @@ function buildState(ctx: ExtensionContext, recentN: number): CacheMetrics {
     const sample = getUsageSample(entry.message as AssistantMessage);
     if (!sample) continue;
 
+    // miss = 上次请求的非 output token 中，本次未命中缓存的部分
+    const miss = Math.max(0, prevPromptTokens - sample.cacheRead);
+    totalMissTokens += miss;
+
+    prevPromptTokens = sample.promptTokens;
     totalCacheReadTokens += sample.cacheRead;
     totalPromptTokens += sample.promptTokens;
     current = sample;
-
-    recentSamples.push(sample);
   }
-
-  // 截断 Recent 到最近 N 条
-  const trimmedSamples = recentSamples.slice(-recentN);
 
   return {
     current,
-    recentSamples: trimmedSamples,
     totalCacheReadTokens,
     totalPromptTokens,
+    totalMissTokens,
+    prevPromptTokens,
   };
 }
 
@@ -264,7 +268,7 @@ function formatStatus(
   colorRules: ColorRule[],
 ): string {
   if (state.totalPromptTokens <= 0) {
-    const empty = "Cache C:--.-- R0:--.-- T:--.--";
+    const empty = "Cache C:--.-- T:--.-- R:--.-- M:--";
     return ctx.ui.theme.fg("dim", empty);
   }
 
@@ -272,22 +276,23 @@ function formatStatus(
     state.current?.cacheRead ?? 0,
     state.current?.promptTokens ?? 0,
   );
-  const rPercent = calcWeightedPercent(state.recentSamples);
   const tPercent = calcPercent(
     state.totalCacheReadTokens,
     state.totalPromptTokens,
   );
 
+  // R = (1 − totalMissTokens / totalInputTokens) × 100
+  // totalInputTokens = totalPromptTokens − totalCacheReadTokens
+  const totalInput = state.totalPromptTokens - state.totalCacheReadTokens;
+  const rPercent =
+    totalInput > 0
+      ? Math.max(0, (1 - state.totalMissTokens / totalInput) * 100)
+      : null;
+
   const cText = applyColor(
     ctx,
     `C:${fmtPercent(cPercent)}`,
     cPercent ?? 0,
-    colorRules,
-  );
-  const rText = applyColor(
-    ctx,
-    `R${state.recentSamples.length}:${fmtPercent(rPercent)}`,
-    rPercent ?? 0,
     colorRules,
   );
   const tText = applyColor(
@@ -296,8 +301,15 @@ function formatStatus(
     tPercent ?? 0,
     colorRules,
   );
+  const rText = applyColor(
+    ctx,
+    `R:${fmtPercent(rPercent)}`,
+    rPercent ?? 0,
+    colorRules,
+  );
+  const mText = `M:${fmtCompact(state.totalMissTokens)}`;
 
-  return `Cache ${cText} ${rText} ${tText}`;
+  return `Cache ${cText} ${tText} ${rText} ${mText}`;
 }
 
 function publishCacheHitRate(
@@ -323,29 +335,29 @@ export default function (pi: ExtensionAPI) {
     return;
   }
 
-  const { recentN, colorRules } = config;
+  const { colorRules } = config;
   const state = createEmptyState();
 
   pi.on("session_start", (_event, ctx) => {
-    const fresh = buildState(ctx, recentN);
+    const fresh = buildState(ctx);
     Object.assign(state, fresh);
     publishCacheHitRate(ctx, state, colorRules);
   });
 
   pi.on("session_tree", (_event, ctx) => {
-    const fresh = buildState(ctx, recentN);
+    const fresh = buildState(ctx);
     Object.assign(state, fresh);
     publishCacheHitRate(ctx, state, colorRules);
   });
 
   pi.on("session_compact", (_event, ctx) => {
-    const fresh = buildState(ctx, recentN);
+    const fresh = buildState(ctx);
     Object.assign(state, fresh);
     publishCacheHitRate(ctx, state, colorRules);
   });
 
   pi.on("model_select", (_event, ctx) => {
-    const fresh = buildState(ctx, recentN);
+    const fresh = buildState(ctx);
     Object.assign(state, fresh);
     publishCacheHitRate(ctx, state, colorRules);
   });
@@ -356,13 +368,12 @@ export default function (pi: ExtensionAPI) {
     const sample = getUsageSample(event.message as AssistantMessage);
     if (!sample) return;
 
+    // miss = max(0, prevPromptTokens - current.cacheRead)
+    const miss = Math.max(0, state.prevPromptTokens - sample.cacheRead);
+    state.totalMissTokens += miss;
+
+    state.prevPromptTokens = sample.promptTokens;
     state.current = sample;
-
-    state.recentSamples.push(sample);
-    if (state.recentSamples.length > recentN) {
-      state.recentSamples.shift();
-    }
-
     state.totalCacheReadTokens += sample.cacheRead;
     state.totalPromptTokens += sample.promptTokens;
 
