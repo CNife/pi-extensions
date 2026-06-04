@@ -400,17 +400,19 @@ export default function (pi: ExtensionAPI) {
     const sample = getUsageSample(event.message as AssistantMessage);
     if (!sample) return;
 
-    // 检测轮边界：如果 branch 中的用户消息数增加了，说明进入了新轮
+    // 检测轮边界：只统计自上次同步以来新增的用户消息
     const branch = ctx.sessionManager.getBranch();
     if (branch.length > state.branchLength) {
-      // 重新统计用户消息数以判断是否跨轮
-      const currentUserCount = branch.filter(
-        (e) => e.type === "message" && e.message.role === "user",
-      ).length;
-      if (currentUserCount > state.userMsgCount) {
+      // 仅统计新增分支段中的用户消息，避免 buildState 的 post-reset 子集 userMsgCount 与全量 branch 计数不匹配
+      const newUserCount = branch
+        .slice(state.branchLength)
+        .filter(
+          (e) => e.type === "message" && e.message.role === "user",
+        ).length;
+      if (newUserCount > 0) {
         // 新轮：将上一轮的 pendingPrompt 提升为 baselinePrompt
         state.baselinePrompt = state.pendingPrompt;
-        state.userMsgCount = currentUserCount;
+        state.userMsgCount += newUserCount;
       }
       state.branchLength = branch.length;
     }
