@@ -126,11 +126,14 @@ function loadConfig(): AutoNamingConfig | null {
 export type AutoNamingState = {
   /** 上次命名时记录的最后 entry ID，用于增量上下文 */
   lastEntryId: string | null;
+  /** 是否已生成过首标题 */
+  firstTitleGenerated: boolean;
 };
 
 function createInitialState(): AutoNamingState {
   return {
     lastEntryId: null,
+    firstTitleGenerated: false,
   };
 }
 
@@ -266,12 +269,12 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     const lastEntry = findLatestAutoNamingTitle(ctx);
     state.lastEntryId = lastEntry?.lastEntryId ?? null;
+    state.firstTitleGenerated = lastEntry !== undefined;
   });
 
-  pi.on("turn_end", async (event, ctx) => {
-    const turnIndex = event.turnIndex;
-
-    if (!shouldGenerateTitle(turnIndex, config.auto_refresh_turns)) return;
+  pi.on("agent_end", async (_event, ctx) => {
+    const msgCount = countMessagesSince(ctx, state.lastEntryId);
+    if (!shouldGenerateTitle(msgCount, config.auto_refresh_turns)) return;
 
     const currentName = pi.getSessionName();
     const lastEntry = findLatestAutoNamingTitle(ctx);
@@ -311,9 +314,9 @@ export default function (pi: ExtensionAPI) {
       if (!transcript) return;
 
       // 4. 调用 LLM
-      const userMessage = `Conversation:\n\n${transcript}\n\nGenerate a concise title for this conversation in ${config.language}.`;
+      const userMessage = `Conversation:\n\n${transcript}\n\nSynthesize the full scope of this conversation into a concise title in ${config.language}.`;
 
-      const systemPrompt = `You are a session titling assistant. Generate a concise, descriptive title (max 60 chars) for the following conversation in ${config.language}. Output ONLY the title, no quotes, no explanation.`;
+      const systemPrompt = `You are a session titling assistant. Generate a concise, descriptive title (max 60 chars) for the following conversation in ${config.language}. Consider the overall conversation arc, key topics, and primary goals rather than focusing on the most recent messages. Output ONLY the title, no quotes, no explanation.`;
 
       const response = await completeSimple(
         model,
@@ -364,6 +367,7 @@ export default function (pi: ExtensionAPI) {
         timestamp: Date.now(),
       });
       state.lastEntryId = ctx.sessionManager.getLeafId() ?? null;
+      state.firstTitleGenerated = true;
     } catch (err) {
       ctx.ui.notify(
         `Error: ${err instanceof Error ? err.message : String(err)}`,
@@ -371,14 +375,135 @@ export default function (pi: ExtensionAPI) {
       );
     }
   });
+
+  // 首条 user message 立即生成标题
+  pi.on("message_end", async (event, ctx) => {
+    if (!event.message || event.message.role !== "user") return;
+    if (state.firstTitleGenerated) return;
+
+    try {
+      let model: Model<any> | undefined;
+      if (config.model) {
+        const parsed = parseModelRef(config.model);
+        if (!parsed) return;
+        model = ctx.modelRegistry.find(parsed.provider, parsed.id);
+      } else {
+        model = ctx.model;
+        if (!model) return;
+      }
+
+      const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+      if (!auth.ok) return;
+
+      // 直接用 event.message 构建 transcript（此时 message 尚未进入 branch）
+      const msgContent = event.message.content;
+      const text =
+        typeof msgContent === "string"
+          ? msgContent
+          : Array.isArray(msgContent)
+            ? msgContent
+                .filter(
+                  (c): c is { type: "text"; text: string } => c.type === "text",
+                )
+                .map((c) => c.text)
+                .join(" ")
+            : "";
+      if (!text) return;
+
+      const transcript = `user: ${text}`;
+      const userMessage = `Conversation:\n\n${transcript}\n\nSynthesize the full scope of this conversation into a concise title in ${config.language}.`;
+
+      const systemPrompt = `You are a session titling assistant. Generate a concise, descriptive title (max 60 chars) for the following conversation in ${config.language}. Consider the overall conversation arc, key topics, and primary goals rather than focusing on the most recent messages. Output ONLY the title, no quotes, no explanation.`;
+
+      const response = await completeSimple(
+        model,
+        {
+          systemPrompt,
+          messages: [
+            { role: "user", content: userMessage, timestamp: Date.now() },
+          ],
+        },
+        {
+          apiKey: auth.apiKey,
+          headers: auth.headers,
+          maxTokens: 60,
+        },
+      );
+
+      if (
+        response.stopReason === "error" ||
+        response.stopReason === "aborted"
+      ) {
+        ctx.ui.notify(
+          `Title gen failed: ${response.errorMessage ?? response.stopReason}`,
+          "warning",
+        );
+        return;
+      }
+
+      const title = response.content
+        .filter((c): c is TextContent & { type: "text" } => c.type === "text")
+        .map((c) => c.text)
+        .join("")
+        .trim()
+        .slice(0, 60);
+
+      if (!title) return;
+
+      pi.setSessionName(title);
+      pi.appendEntry("auto-naming-title", {
+        title,
+        lastEntryId: state.lastEntryId,
+        timestamp: Date.now(),
+      });
+      state.lastEntryId = ctx.sessionManager.getLeafId() ?? null;
+      state.firstTitleGenerated = true;
+    } catch {
+      // 首次生成失败不阻塞，等 agent_end 再试
+    }
+  });
 }
 
-/** 判断是否应该触发标题生成。turnIndex 是 0-based */
+/** 统计 lastEntryId 之后的 user + assistant 消息数量 */
+function countMessagesSince(
+  ctx: {
+    sessionManager: {
+      getBranch: () => Array<{
+        type: string;
+        id?: string;
+        message?: { role: string };
+      }>;
+    };
+  },
+  lastEntryId: string | null,
+): number {
+  const branch = ctx.sessionManager.getBranch();
+  let started = lastEntryId === null;
+  let count = 0;
+
+  for (const entry of branch) {
+    if (!started) {
+      if (entry.id === lastEntryId) {
+        started = true;
+      }
+      continue;
+    }
+    if (
+      entry.type === "message" &&
+      entry.message &&
+      (entry.message.role === "user" || entry.message.role === "assistant")
+    ) {
+      count++;
+    }
+  }
+  return count;
+}
+
+/** 判断是否应该触发标题生成。基于消息数累积阈值 */
 export function shouldGenerateTitle(
-  turnIndex: number,
+  messageCount: number,
   autoRefreshTurns: number | null,
 ): boolean {
-  if (turnIndex === 0) return true;
   if (autoRefreshTurns === null) return false;
-  return turnIndex >= autoRefreshTurns && turnIndex % autoRefreshTurns === 0;
+  return messageCount >= autoRefreshTurns;
 }
