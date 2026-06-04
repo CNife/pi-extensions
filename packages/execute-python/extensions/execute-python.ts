@@ -82,6 +82,7 @@ const executePythonTool = defineTool({
     "Use packages param to declare ALL third-party dependencies (uv auto-manages venv)",
     "Prefer bash for simple commands or short pipes (≤3 |)",
     "No bash escaping needed — write Python code directly",
+    "Use executePython for running Python code (python -c, scripts) instead of bash.",
   ],
   parameters: Type.Object({
     code: Type.String({
@@ -389,6 +390,12 @@ const executePythonTool = defineTool({
       }
     }
 
+    // Show stderr in collapsed mode when present
+    if (!expanded && details?.stderr) {
+      text += `\n${theme.fg("warning", "--- stderr below ---")}`;
+      text += `\n${details.stderr}`;
+    }
+
     // Expanded mode: show full stdout and stderr (only if stderr exists)
     if (expanded) {
       if (details?.stdout) {
@@ -439,4 +446,23 @@ const executePythonTool = defineTool({
 
 export default function (pi: ExtensionAPI) {
   pi.registerTool(executePythonTool);
+
+  // Intercept bash tool results to guide AI toward executePython
+  pi.on("tool_result", async (event, _ctx) => {
+    if (event.toolName !== "bash") return;
+
+    const command = (event.input as { command?: string })?.command ?? "";
+    // Detect python -c patterns in bash commands
+    if (/python[0-9.]*\s+-c\s/.test(command)) {
+      return {
+        content: [
+          ...event.content,
+          {
+            type: "text" as const,
+            text: "\nTip: Use executePython for Python code instead of bash.",
+          },
+        ],
+      };
+    }
+  });
 }
