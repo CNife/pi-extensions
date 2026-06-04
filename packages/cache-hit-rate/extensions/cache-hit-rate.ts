@@ -140,7 +140,14 @@ type CacheMetrics = {
   totalCacheReadTokens: number;
   totalPromptTokens: number;
   totalMissTokens: number;
-  prevPromptTokens: number;
+  /** 上一轮（跨用户消息边界）的最后一条 assistant message 的 promptTokens，作为本轮所有 asst msg 的缓存基线 */
+  baselinePrompt: number;
+  /** 当前轮最后一条 assistant message 的 promptTokens，下轮用户消息来临时成为新的 baselinePrompt */
+  pendingPrompt: number;
+  /** 上次 buildState 时的 branch 长度。message_end 据此检测 branch 增长（新轮次） */
+  branchLength: number;
+  /** 上次 buildState 时的用户消息数。message_end 据此检测用户消息增多（轮边界） */
+  userMsgCount: number;
 };
 
 function createEmptyState(): CacheMetrics {
@@ -149,7 +156,10 @@ function createEmptyState(): CacheMetrics {
     totalCacheReadTokens: 0,
     totalPromptTokens: 0,
     totalMissTokens: 0,
-    prevPromptTokens: 0,
+    baselinePrompt: 0,
+    pendingPrompt: 0,
+    branchLength: 0,
+    userMsgCount: 0,
   };
 }
 
@@ -176,21 +186,40 @@ function getUsageSample(message: AssistantMessage): Sample | undefined {
   return { cacheRead, promptTokens };
 }
 
-/** 单次遍历 getBranch()，遇 model_change/compaction entry 重置累计状态。相邻样本逐对比较计算 miss。 */
+/**
+ * 单次遍历 getBranch()，以用户消息边界为「轮」界定缓存基线。
+ *
+ * - 模型切换/compaction 时重置所有累计状态。
+ * - 用户消息处：将 pendingPrompt（上一轮最后一条 asst msg 的 pt）提升为 baselinePrompt。
+ * - 同轮内的连续 asst msg 共享同一 baselinePrompt，避免 cacheWrite 虚增 miss。
+ * - miss = max(0, baselinePrompt − cacheRead)，仅统计跨轮的缓存失效。
+ */
 function buildState(ctx: ExtensionContext): CacheMetrics {
   let totalCacheReadTokens = 0;
   let totalPromptTokens = 0;
   let totalMissTokens = 0;
-  let prevPromptTokens = 0;
+  let baselinePrompt = 0;
+  let pendingPrompt = 0;
   let current: Sample | null = null;
+  let userMsgCount = 0;
 
-  for (const entry of ctx.sessionManager.getBranch()) {
+  const branch = ctx.sessionManager.getBranch();
+  for (const entry of branch) {
     if (entry.type === "model_change" || entry.type === "compaction") {
       totalCacheReadTokens = 0;
       totalPromptTokens = 0;
       totalMissTokens = 0;
-      prevPromptTokens = 0;
+      baselinePrompt = 0;
+      pendingPrompt = 0;
       current = null;
+      userMsgCount = 0;
+      continue;
+    }
+
+    // 用户消息 = 轮边界：将上一轮的最后助理消息提升为基线
+    if (entry.type === "message" && entry.message.role === "user") {
+      userMsgCount++;
+      baselinePrompt = pendingPrompt;
       continue;
     }
 
@@ -201,11 +230,11 @@ function buildState(ctx: ExtensionContext): CacheMetrics {
     const sample = getUsageSample(entry.message as AssistantMessage);
     if (!sample) continue;
 
-    // miss = 上次请求的非 output token 中，本次未命中缓存的部分
-    const miss = Math.max(0, prevPromptTokens - sample.cacheRead);
+    // miss = 跨轮基线 vs 本次 cacheRead，仅统计真正丢失的缓存
+    const miss = Math.max(0, baselinePrompt - sample.cacheRead);
     totalMissTokens += miss;
 
-    prevPromptTokens = sample.promptTokens;
+    pendingPrompt = sample.promptTokens;
     totalCacheReadTokens += sample.cacheRead;
     totalPromptTokens += sample.promptTokens;
     current = sample;
@@ -216,7 +245,10 @@ function buildState(ctx: ExtensionContext): CacheMetrics {
     totalCacheReadTokens,
     totalPromptTokens,
     totalMissTokens,
-    prevPromptTokens,
+    baselinePrompt,
+    pendingPrompt,
+    branchLength: branch.length,
+    userMsgCount,
   };
 }
 
@@ -368,11 +400,27 @@ export default function (pi: ExtensionAPI) {
     const sample = getUsageSample(event.message as AssistantMessage);
     if (!sample) return;
 
-    // miss = max(0, prevPromptTokens - current.cacheRead)
-    const miss = Math.max(0, state.prevPromptTokens - sample.cacheRead);
+    // 检测轮边界：如果 branch 中的用户消息数增加了，说明进入了新轮
+    const branch = ctx.sessionManager.getBranch();
+    if (branch.length > state.branchLength) {
+      // 重新统计用户消息数以判断是否跨轮
+      const currentUserCount = branch.filter(
+        (e) => e.type === "message" && e.message.role === "user",
+      ).length;
+      if (currentUserCount > state.userMsgCount) {
+        // 新轮：将上一轮的 pendingPrompt 提升为 baselinePrompt
+        state.baselinePrompt = state.pendingPrompt;
+        state.userMsgCount = currentUserCount;
+      }
+      state.branchLength = branch.length;
+    }
+
+    // miss = max(0, baselinePrompt - current.cacheRead)
+    // baselinePrompt 由 buildState 在轮边界更新，同轮内保持不变
+    const miss = Math.max(0, state.baselinePrompt - sample.cacheRead);
     state.totalMissTokens += miss;
 
-    state.prevPromptTokens = sample.promptTokens;
+    state.pendingPrompt = sample.promptTokens;
     state.current = sample;
     state.totalCacheReadTokens += sample.cacheRead;
     state.totalPromptTokens += sample.promptTokens;
