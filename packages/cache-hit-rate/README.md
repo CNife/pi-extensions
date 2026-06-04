@@ -53,9 +53,9 @@ Cache C:85.50 T:92.10 R:96.30 M:1.2k
 | C | 当前消息缓存命中率 | cacheRead / promptTokens | 瞬时值 |
 | T | 累计缓存命中率 | ΣcacheRead / ΣpromptTokens | 长期基准 |
 | R | 有效缓存命中率 | (1 − ΣMiss / (ΣpromptTokens − ΣcacheRead)) × 100 | 排除缓存写入干扰 |
-| M | 累计失效 token | Σmax(0, prevPromptTokens − cacheRead) | token 绝对值 |
+| M | 累计失效 token | Σmax(0, baselinePrompt − cacheRead) | token 绝对值 |
 
-Miss 通过对比相邻请求计算：上次请求的 `input + cacheRead + cacheWrite` 减去本次的 `cacheRead`（正值部分）。模型切换或 compaction 后归零。
+Miss 以**用户消息边界为轮**，以上一轮最后一条 assistant message 的 `promptTokens` 作为本轮缓存基线（`baselinePrompt`）。同轮内连续 asst msg 共享同一基线，避免 cacheWrite 虚增 miss。模型切换或 compaction 后归零。
 
 ## 安装
 
