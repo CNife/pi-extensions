@@ -98,6 +98,7 @@ pi install npm:@cnife/pi-miscs
 - 自定义 TUI 渲染
 - 进程组管理（detached + signal 清理）
 - 纯文本内容供 LLM 消费
+- 错误信息完整展示
 
 ### cache-hit-rate
 
