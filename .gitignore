@@ -1,3 +1,6 @@
 node_modules/
 .DS_Store
 .worktrees/
+
+# rpiv workflow 运行日志（产物已归档至 artifacts/）
+.rpiv/workflows/runs/
