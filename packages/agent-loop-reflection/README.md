@@ -8,7 +8,7 @@
 - 同一个 agent run 内默认每 10 个有效 turn 再提醒一次。
 - 使用 `steer` 作为可见用户消息插入当前 agent 流程。
 - 自动提醒后的反思 turn 不计入下一次 repeat cadence。
-- 用户手动发送新的非插件消息后重置自动提醒节拍。
+- 所有用户消息（包括 mid-stream steer 和新 round 消息）都会重置倒计时，让用户介入后有足够 turn 空间。
 - 正常触发时不显示额外 footer、status、widget、modal 或 notify。
 
 ## 安装
@@ -56,9 +56,15 @@ PI_CODING_AGENT_DIR=/tmp/pi-agent-loop-reflection-test \
 
 ## 行为说明
 
-插件在 `turn_end` 事件中读取当前 completed turn 数。只有当最近一条 assistant message 的 `stopReason` 是 `toolUse` 时，插件才会发送提醒，避免模型已经正常结束时额外开启一轮。
+插件在 `turn_end` 事件中递减一个倒计数器。只有当最近一条 assistant message 的 `stopReason` 是 `toolUse` 时才会发送提醒，避免模型已经正常结束时额外开启一轮。
 
-插件通过扫描当前 session branch 中最新的非插件 user message 来确定 cadence anchor。插件自己注入的消息通过 `reminderText` 精确匹配识别；如果用户手动发送新的非插件消息，anchor 会更新，提醒节拍重新开始。
+插件通过 `input` 事件监听所有进入 agent 的消息，根据 `source` 字段区分来源：
+
+- `"interactive"` — TUI 用户输入（包括 mid-stream steer）
+- `"rpc"` — RPC 调用
+- `"extension"` — 插件自己的 `sendUserMessage`（跳过）
+
+遇到非 `"extension"` 的消息时，倒计数器重置为 `thresholdTurns`，确保用户介入后不会马上被自动提醒打断。
 
 ## 故障排查
 
@@ -67,4 +73,3 @@ PI_CODING_AGENT_DIR=/tmp/pi-agent-loop-reflection-test \
 | 启动后没有提醒 | 未达到 `thresholdTurns`，或 agent 已经正常结束，没有下一轮 continuation | 降低阈值做测试，或观察长工具链任务。 |
 | 修改配置后没生效 | 配置只在扩展加载时读取 | 重启 pi。 |
 | 非法 JSON 后仍然继续运行 | 这是预期行为；插件会 warning 并使用默认配置 | 修正配置后重启。 |
-| 用户手动输入与默认提醒完全相同 | 插件用 `reminderText` 作为 marker，完全相同文本会被视作插件消息 | 改写手动输入或自定义 `reminderText`。 |
