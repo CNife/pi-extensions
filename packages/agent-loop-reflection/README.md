@@ -44,18 +44,14 @@ PI_CODING_AGENT_DIR=/tmp/pi-agent-loop-reflection-test \
 
 ```json
 {
-  "enabled": true,
-  "thresholdTurns": 10,
-  "repeatEveryTurns": 10,
+  "reminderTurnsInterval": 10,
   "reminderText": "请先暂停继续推进，做一次 agent loop 反思：\n\n1. 回到用户的原始目标：现在正在做的事是否仍然直接服务于这个目标？\n2. 检查当前证据和方向：已经验证了什么，哪些只是猜测，下一步是否仍然是最小有效动作？\n3. 判断是否卡住、不确定或可能跑偏：如果是，请先调用 `advisor` 获取建议，再继续。\n\n如果一切仍然清晰，请用一两句话说明判断依据，然后继续执行。"
 }
 ```
 
 | 字段 | 默认值 | 说明 |
 |------|--------|------|
-| `enabled` | `true` | 是否启用自动提醒。 |
-| `thresholdTurns` | `10` | 首次提醒前需要完成的有效 turn 数，必须是正整数。 |
-| `repeatEveryTurns` | `10` | 后续提醒间隔的有效 turn 数，必须是正整数。 |
+| `reminderTurnsInterval` | `10` | 首次提醒及后续提醒间隔的有效 turn 数，必须是正整数。 |
 | `reminderText` | 中文三步提示 | 插入给模型的可见 `steer` 用户消息，也作为插件自注入消息的识别 marker。 |
 
 缺失配置会自动创建默认文件；读取失败、JSON 非法或字段类型非法时会输出 warning 并使用默认配置。修改配置后需要重启 pi 生效。
@@ -70,7 +66,7 @@ PI_CODING_AGENT_DIR=/tmp/pi-agent-loop-reflection-test \
 - `"rpc"` — RPC 调用
 - `"extension"` — 插件自己的 `sendUserMessage`（跳过）
 
-遇到非 `"extension"` 的消息时，倒计数器重置为 `thresholdTurns`，确保用户介入后不会马上被自动提醒打断。
+遇到非 `"extension"` 的消息时，倒计数器重置为 `reminderTurnsInterval`，确保用户介入后不会马上被自动提醒打断。
 
 ## 故障排查
 
