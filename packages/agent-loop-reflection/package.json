@@ -1,0 +1,31 @@
+{
+  "name": "@cnife/pi-agent-loop-reflection",
+  "version": "0.1.0",
+  "private": false,
+  "keywords": [
+    "pi-package"
+  ],
+  "description": "Inject reflection reminders into long-running pi agent loops",
+  "homepage": "https://github.com/CNife/pi-extensions#readme",
+  "bugs": {
+    "url": "https://github.com/CNife/pi-extensions/issues"
+  },
+  "license": "MIT",
+  "author": "CNife <CNife@vip.qq.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CNife/pi-extensions.git"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}
