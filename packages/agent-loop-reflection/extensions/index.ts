@@ -9,9 +9,7 @@ import {
 // ──── Config ────────────────────────────────────────────────────
 
 export type AgentLoopReflectionConfig = {
-  enabled: boolean;
-  thresholdTurns: number;
-  repeatEveryTurns: number;
+  reminderTurnsInterval: number;
   reminderText: string;
 };
 
@@ -26,9 +24,7 @@ const DEFAULT_REMINDER_TEXT = [
 ].join("\n");
 
 const DEFAULT_CONFIG: AgentLoopReflectionConfig = {
-  enabled: true,
-  thresholdTurns: 10,
-  repeatEveryTurns: 10,
+  reminderTurnsInterval: 10,
   reminderText: DEFAULT_REMINDER_TEXT,
 };
 
@@ -87,24 +83,13 @@ function loadConfig(): AgentLoopReflectionConfig | null {
     return { ...DEFAULT_CONFIG };
   }
 
-  if (parsed.enabled !== undefined && typeof parsed.enabled !== "boolean") {
-    warnConfig("enabled must be a boolean, using defaults");
-    return { ...DEFAULT_CONFIG };
-  }
-
   if (
-    parsed.thresholdTurns !== undefined &&
-    !isPositiveInteger(parsed.thresholdTurns)
+    parsed.reminderTurnsInterval !== undefined &&
+    !isPositiveInteger(parsed.reminderTurnsInterval)
   ) {
-    warnConfig("thresholdTurns must be a positive integer, using defaults");
-    return { ...DEFAULT_CONFIG };
-  }
-
-  if (
-    parsed.repeatEveryTurns !== undefined &&
-    !isPositiveInteger(parsed.repeatEveryTurns)
-  ) {
-    warnConfig("repeatEveryTurns must be a positive integer, using defaults");
+    warnConfig(
+      "reminderTurnsInterval must be a positive integer, using defaults",
+    );
     return { ...DEFAULT_CONFIG };
   }
 
@@ -118,18 +103,10 @@ function loadConfig(): AgentLoopReflectionConfig | null {
   }
 
   return {
-    enabled:
-      parsed.enabled !== undefined
-        ? (parsed.enabled as boolean)
-        : DEFAULT_CONFIG.enabled,
-    thresholdTurns:
-      parsed.thresholdTurns !== undefined
-        ? (parsed.thresholdTurns as number)
-        : DEFAULT_CONFIG.thresholdTurns,
-    repeatEveryTurns:
-      parsed.repeatEveryTurns !== undefined
-        ? (parsed.repeatEveryTurns as number)
-        : DEFAULT_CONFIG.repeatEveryTurns,
+    reminderTurnsInterval:
+      parsed.reminderTurnsInterval !== undefined
+        ? (parsed.reminderTurnsInterval as number)
+        : DEFAULT_CONFIG.reminderTurnsInterval,
     reminderText:
       parsed.reminderText !== undefined
         ? (parsed.reminderText as string)
@@ -164,21 +141,20 @@ export default function (pi: ExtensionAPI) {
     return;
   }
 
-  resetCadence(config.thresholdTurns);
+  resetCadence(config.reminderTurnsInterval);
 
-  pi.on("session_start", () => resetCadence(config.thresholdTurns));
-  pi.on("session_tree", () => resetCadence(config.thresholdTurns));
-  pi.on("session_compact", () => resetCadence(config.thresholdTurns));
-  pi.on("agent_start", () => resetCadence(config.thresholdTurns));
-  pi.on("agent_end", () => resetCadence(config.thresholdTurns));
+  pi.on("session_start", () => resetCadence(config.reminderTurnsInterval));
+  pi.on("session_tree", () => resetCadence(config.reminderTurnsInterval));
+  pi.on("session_compact", () => resetCadence(config.reminderTurnsInterval));
+  pi.on("agent_start", () => resetCadence(config.reminderTurnsInterval));
+  pi.on("agent_end", () => resetCadence(config.reminderTurnsInterval));
 
   pi.on("input", (event) => {
     if (event.source === "extension") return;
-    resetCadence(config.thresholdTurns);
+    resetCadence(config.reminderTurnsInterval);
   });
 
   pi.on("turn_end", (event) => {
-    if (!config.enabled) return;
     if (event.message.role !== "assistant") return;
 
     turnsUntilNextReminder--;
@@ -187,6 +163,6 @@ export default function (pi: ExtensionAPI) {
     if (turnsUntilNextReminder > 0) return;
 
     pi.sendUserMessage(config.reminderText, { deliverAs: "steer" });
-    turnsUntilNextReminder = config.repeatEveryTurns + 1;
+    turnsUntilNextReminder = config.reminderTurnsInterval + 1;
   });
 }
