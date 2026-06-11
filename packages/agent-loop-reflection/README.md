@@ -17,6 +17,12 @@
 pi install npm:@cnife/pi-agent-loop-reflection
 ```
 
+> 💡 **推荐**：提醒内容会要求模型在必要时调用 `advisor` 工具。建议同时安装 `@juicesharp/rpiv-workflow` 以获得完整 advisor 支持：
+>
+> ```bash
+> pi install npm:@juicesharp/rpiv-workflow
+> ```
+
 ## 本地测试
 
 ```bash
