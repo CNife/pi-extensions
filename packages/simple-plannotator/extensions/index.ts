@@ -199,10 +199,10 @@ export default function pn(pi: ExtensionAPI): void {
 /** Normalize a user-provided path: strip @ prefix, quotes, expand ~ to home directory. */
 function normalizeUserPath(raw: string): string {
   const trimmed = raw.trim();
-  const unquoted = trimmed.replace(/^["']|["']$/g, "");
   // Strip @ prefix from file references (e.g. @file.md -> file.md)
-  const stripped = unquoted.startsWith("@") ? unquoted.slice(1) : unquoted;
-  return expandHomePath(stripped);
+  const stripped = trimmed.startsWith("@") ? trimmed.slice(1) : trimmed;
+  const unquoted = stripped.replace(/^["']|["']$/g, "");
+  return expandHomePath(unquoted);
 }
 
 function expandHomePath(input: string): string {
