@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<!-- ==================================================================
+     ONE-PAGER TEMPLATE · parchment design system
+     agent-loop-reflection 插件展示卡片
+     ================================================================== -->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>agent-loop-reflection — 让廉价模型跑得更稳</title>
+<meta name="author" content="蔡涛(CNife)">
+<meta name="description" content="在 pi agent loop 中定期强制模型反思，在 harness 层加约束让廉价模型跑得更稳。">
+<meta name="keywords" content="Pi, agent-loop-reflection, 扩展, agent, loop, 反思">
+<meta name="generator" content="Kami">
+<style>
+  @font-face {
+    font-family: "TsangerJinKai02";
+    src: url("../fonts/TsangerJinKai02-W04.ttf") format("truetype"),
+       url("https://cdn.jsdelivr.net/gh/tw93/Kami@main/assets/fonts/TsangerJinKai02-W04.ttf") format("truetype");
+    font-weight: 400;
+    font-style: normal;
+  }
+  @font-face {
+    font-family: "TsangerJinKai02";
+    src: url("../fonts/TsangerJinKai02-W05.ttf") format("truetype"),
+       url("https://cdn.jsdelivr.net/gh/tw93/Kami@main/assets/fonts/TsangerJinKai02-W05.ttf") format("truetype");
+    font-weight: 500;
+    font-style: normal;
+  }
+
+  @page { size: A4; margin: 15mm 18mm; background: #f5f4ed; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --parchment: #f5f4ed;
+    --ivory:     #faf9f5;
+    --near-black:#141413;
+    --dark-warm: #3d3d3a;
+    --olive:     #504e49;
+    --stone:     #6b6a64;
+    --brand:     #1B365D;
+    --border:    #e8e6dc;
+    --border-soft:#e5e3d8;
+    --serif: "TsangerJinKai02", "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", "STSong", Georgia, serif;
+  }
+
+  html, body { background: var(--parchment); }
+  @media screen { body { max-width: 210mm; margin: 0 auto; padding: 15mm 18mm; } }
+
+  body {
+    color: var(--near-black);
+    font-family: var(--serif);
+    font-size: 10pt;
+    line-height: 1.45;
+    letter-spacing: 0.3pt;
+  }
+
+  .header {
+    margin-bottom: 14pt;
+    padding-bottom: 10pt;
+    border-bottom: 0.5pt solid var(--border);
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 20pt;
+  }
+  .title-block { flex: 1; }
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 7pt;
+    font-size: 9pt;
+    color: var(--brand);
+    letter-spacing: 1.5pt;
+    text-transform: uppercase;
+    margin-bottom: 7pt;
+    font-weight: 500;
+  }
+  .eyebrow::before {
+    content: "";
+    width: 8pt;
+    height: 1.5pt;
+    border-radius: 0.75pt;
+    background: var(--brand);
+    flex-shrink: 0;
+  }
+  h1 {
+    font-family: var(--serif);
+    font-size: 24pt;
+    font-weight: 500;
+    color: var(--near-black);
+    line-height: 1.15;
+    margin-bottom: 5pt;
+  }
+  .subtitle {
+    font-size: 11pt;
+    color: var(--olive);
+    line-height: 1.4;
+  }
+  .meta {
+    font-size: 9pt;
+    color: var(--stone);
+    text-align: right;
+    line-height: 1.45;
+    white-space: nowrap;
+  }
+
+  section { margin-bottom: 16pt; break-inside: avoid; }
+  section:last-of-type { margin-bottom: 0; }
+
+  h2 {
+    font-family: var(--serif);
+    font-size: 15pt;
+    font-weight: 500;
+    color: var(--near-black);
+    margin-bottom: 6pt;
+  }
+  h2 .sub {
+    font-size: 9pt;
+    color: var(--stone);
+    font-weight: 400;
+    margin-left: 6pt;
+  }
+  h3 {
+    font-family: var(--serif);
+    font-size: 11pt;
+    font-weight: 500;
+    color: var(--near-black);
+    margin-bottom: 4pt;
+  }
+
+  p { margin-bottom: 5pt; line-height: 1.5; }
+  p:last-child { margin-bottom: 0; }
+
+  .hl { color: var(--brand); font-weight: 500; }
+
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18pt;
+  }
+
+  .pain-col h3  { color: #a04040; }
+  .solution-col h3 { color: var(--brand); }
+
+  ul.dash {
+    margin: 0; padding-left: 16pt;
+  }
+  ul.dash li {
+    margin-bottom: 5pt;
+    line-height: 1.45;
+  }
+  ul.dash li:last-child { margin-bottom: 0; }
+  ul.dash li::marker { color: var(--brand); }
+
+  .callout {
+    background: rgba(0,0,0,0.02);
+    border-left: 1.8pt solid var(--brand);
+    padding: 6pt 0 6pt 12pt;
+    margin: 8pt 0;
+    font-size: 9pt;
+    line-height: 1.5;
+    color: var(--near-black);
+    break-inside: avoid;
+  }
+  .callout .hl { color: var(--brand); }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9pt;
+    margin: 6pt 0;
+    break-inside: avoid;
+  }
+  table th {
+    text-align: left;
+    font-weight: 500;
+    color: var(--dark-warm);
+    padding: 3pt 5pt;
+    border-bottom: 1pt solid var(--border);
+    background: transparent;
+  }
+  table td {
+    padding: 2pt 5pt;
+    border-bottom: 0.3pt solid var(--border-soft);
+    vertical-align: top;
+  }
+  table.compact th { padding: 2pt 5pt; font-size: 8pt; }
+  table.compact td { padding: 1pt 5pt; font-size: 8pt; line-height: 1.4; }
+
+  .footer {
+    margin-top: 14pt;
+    padding-top: 6pt;
+    border-top: 0.3pt dotted var(--border);
+    font-size: 9pt;
+    color: var(--stone);
+    display: flex;
+    justify-content: space-between;
+  }
+
+  code {
+    font-family: "SF Mono", "Fira Code", "Source Code Pro", Consolas, monospace;
+    font-size: 9pt;
+    color: var(--near-black);
+  }
+</style>
+</head>
+<body>
+
+<!-- ========== HEADER ========== -->
+<div class="header">
+  <div class="title-block">
+    <div class="eyebrow">PI 扩展插件</div>
+    <h1>agent-loop-reflection<br>让廉价模型跑得更稳</h1>
+    <div class="subtitle">定期反思，让廉价模型跑长任务更稳。</div>
+  </div>
+  <div class="meta">
+    蔡涛(CNife)<br>
+    2026.06.15<br>
+    v0.2.0
+  </div>
+</div>
+
+<!-- ========== 痛点 vs 解法 两栏 ========== -->
+<div class="two-col">
+  <section class="pain-col">
+    <h3>没有反思</h3>
+    <ul class="dash">
+      <li>Flash 级别模型容易忘掉最初的指令，跑偏了也不知道</li>
+      <li>一条路走不通，换条路继续撞墙</li>
+      <li>大量 token 和时间浪费在无意义的循环上</li>
+    </ul>
+  </section>
+  <section class="solution-col">
+    <h3>强制反思</h3>
+    <ul class="dash">
+      <li>定期暂停检查：还在服务用户的原始目标吗？</li>
+      <li>卡住了？调 <code>advisor</code> 从更强模型获取建议</li>
+      <li>不确定？停下来等用户给方向，不作无谓尝试</li>
+    </ul>
+  </section>
+</div>
+
+<!-- ========== 提醒消息 ========== -->
+<section>
+  <h2>默认每10个 turn 插入一次反思提醒</h2>
+  <p>插件通过 <code>steer</code> 以用户消息的形式插入当前 agent 流程，模型必须停下处理。默认提醒内容：</p>
+  <div class="callout">
+    请先暂停继续推进，做一次 agent loop 反思：<br><br>
+    1. 回到用户的原始目标：现在正在做的事是否仍然直接服务于这个目标？<br>
+    2. 检查当前证据和方向：已经验证了什么，哪些只是猜测，下一步是否仍然是最小有效动作？<br>
+    3. 判断是否卡住、不确定或可能跑偏：如果是，请先调用 <code>advisor</code> 获取建议，再继续。<br><br>
+    如果一切仍然清晰，请用一两句话说明判断依据，然后继续执行。
+  </div>
+  <p style="font-size:9pt; color:var(--stone);">提醒后的反思 turn 不计入下一次倒计时。用户在任何时候介入（输入消息）也会重置计数器。</p>
+</section>
+
+<!-- ========== 触发机制 ========== -->
+<section>
+  <h2>不乱打断<span class="sub">三种情况不触发提醒</span></h2>
+  <ul class="dash">
+    <li><span class="hl">短任务</span>——turn 数未达阈值，模型很快就结束了，不需要打断</li>
+    <li><span class="hl">用户介入</span>——用户输入新消息后倒计时重置，用户已经接手就不额外提醒</li>
+    <li><span class="hl">回复结束</span>——<code>stopReason</code> 不是 <code>toolUse</code>（模型已生成最终回复），不触发提醒</li>
+  </ul>
+</section>
+
+<!-- ========== 扩展面 ========== -->
+<section>
+  <h2>3 个 Pi 扩展面</h2>
+  <table class="compact">
+    <thead>
+      <tr><th>Pi 扩展面</th><th>代理循环反思如何使用</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>turn_end</code></td><td>递减倒计数器，满足条件时触发提醒</td></tr>
+      <tr><td><code>input</code></td><td>监听所有消息来源，非插件来源时重置倒计时</td></tr>
+      <tr><td><code>sendUserMessage</code></td><td>以 <code>steer</code> 方式插入反思消息到当前 agent 流程</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ========== 安装 ========== -->
+<div class="callout" style="border-left:1.8pt solid var(--brand); margin-top:4pt; padding:4pt 0 4pt 14pt;">
+  <span class="hl">➜  pi install npm:@cnife/pi-agent-loop-reflection</span>
+</div>
+
+<!-- ========== FOOTER ========== -->
+<div class="footer">
+  <span>公开</span>
+  <span>github.com/CNife/pi-extensions</span>
+</div>
+
+</body>
+</html>
