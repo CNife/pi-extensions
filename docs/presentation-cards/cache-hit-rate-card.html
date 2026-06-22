@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<!-- ==================================================================
+     ONE-PAGER TEMPLATE · parchment design system
+     Cache Hit Rate 插件展示卡片
+     ================================================================== -->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Cache Hit Rate — 把 LLM 缓存从黑盒变成仪表盘</title>
+<meta name="author" content="蔡涛(CNife)">
+<meta name="description" content="在 pi footer 实时显示缓存命中率——当前(C)、累计(T)、有效(R)、失效(M)四维指标。">
+<meta name="keywords" content="Pi, Cache Hit Rate, 扩展, LLM, 缓存, 指标">
+<meta name="generator" content="Kami">
+<style>
+  /* Regular weight */
+  @font-face {
+    font-family: "TsangerJinKai02";
+    src: url("https://cdn.jsdelivr.net/gh/tw93/Kami@main/assets/fonts/TsangerJinKai02-W04.ttf") format("truetype");
+    font-weight: 400;
+    font-style: normal;
+  }
+
+  /* Bold weight - W05 for all bold variants */
+  @font-face {
+    font-family: "TsangerJinKai02";
+    src: url("https://cdn.jsdelivr.net/gh/tw93/Kami@main/assets/fonts/TsangerJinKai02-W05.ttf") format("truetype");
+    font-weight: 500;
+    font-style: normal;
+  }
+
+  @page {
+    size: A4;
+    margin: 15mm 18mm 15mm 18mm;
+    background: #f5f4ed;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --parchment: #f5f4ed;
+    --ivory:     #faf9f5;
+    --near-black:#141413;
+    --dark-warm: #3d3d3a;
+    --olive:     #504e49;
+    --stone:     #6b6a64;
+    --brand:     #1B365D;
+    --border:    #e8e6dc;
+    --border-soft:#e5e3d8;
+    --tag-bg:    #E4ECF5;
+    --serif: "TsangerJinKai02", "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", "STSong", Georgia, serif;
+    --sans: var(--serif);
+  }
+
+  html, body { background: var(--parchment); }
+
+  @media screen {
+    body { max-width: 210mm; margin: 0 auto; padding: 15mm 18mm; }
+  }
+
+  body {
+    color: var(--near-black);
+    font-family: var(--serif);
+    font-size: 10pt;
+    line-height: 1.45;
+    letter-spacing: 0.3pt;
+  }
+
+  /* ========== HEADER ========== */
+  .header {
+    margin-bottom: 14pt;
+    padding-bottom: 10pt;
+    border-bottom: 0.5pt solid var(--border);
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 20pt;
+  }
+  .title-block { flex: 1; }
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 7pt;
+    font-size: 9pt;
+    color: var(--brand);
+    letter-spacing: 1.5pt;
+    text-transform: uppercase;
+    margin-bottom: 7pt;
+    font-weight: 500;
+  }
+  .eyebrow::before {
+    content: "";
+    width: 8pt;
+    height: 1.5pt;
+    border-radius: 0.75pt;
+    background: var(--brand);
+    flex-shrink: 0;
+  }
+  h1 {
+    font-family: var(--serif);
+    font-size: 24pt;
+    font-weight: 500;
+    color: var(--near-black);
+    line-height: 1.15;
+    margin-bottom: 5pt;
+  }
+  .subtitle {
+    font-size: 11pt;
+    color: var(--olive);
+    line-height: 1.4;
+  }
+  .meta {
+    font-size: 9pt;
+    color: var(--stone);
+    text-align: right;
+    line-height: 1.45;
+    white-space: nowrap;
+  }
+
+  /* ========== METRICS ========== */
+  .metrics {
+    display: flex;
+    gap: 14pt;
+    margin-bottom: 14pt;
+    padding: 6pt 0 8pt 0;
+    border-bottom: 0.3pt dotted var(--border);
+  }
+  .metric {
+    flex: 1;
+    background: transparent;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3pt;
+    break-inside: avoid;
+  }
+  .metric-value {
+    font-family: var(--serif);
+    font-size: 22pt;
+    font-weight: 500;
+    color: var(--brand);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    letter-spacing: -0.2pt;
+  }
+  .metric-label {
+    font-size: 8.5pt;
+    color: var(--olive);
+    line-height: 1.3;
+    white-space: nowrap;
+  }
+
+  /* ========== SECTIONS ========== */
+  section { margin-bottom: 16pt; break-inside: avoid; }
+  section:last-of-type { margin-bottom: 0; }
+
+  h2 {
+    font-family: var(--serif);
+    font-size: 15pt;
+    font-weight: 500;
+    color: var(--near-black);
+    margin-bottom: 6pt;
+  }
+  h2 .sub {
+    font-size: 9pt;
+    color: var(--stone);
+    font-weight: 400;
+    margin-left: 6pt;
+  }
+
+  p { margin-bottom: 5pt; line-height: 1.5; }
+  p:last-child { margin-bottom: 0; }
+
+  .lead {
+    font-size: 11.5pt;
+    line-height: 1.55;
+    color: var(--dark-warm);
+    margin-bottom: 14pt;
+  }
+
+  .hl { color: var(--brand); font-weight: 500; }
+
+  /* ========== 2-column grid ========== */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18pt;
+  }
+
+  /* ========== Color indicator dots ========== */
+  .dot-green { display: inline-block; width: 6pt; height: 6pt; border-radius: 50%; background: #2E7D32; margin-right: 2pt; vertical-align: middle; }
+
+  /* ========== Formula block ========== */
+  .formula {
+    font-family: "SF Mono", "Fira Code", "Source Code Pro", Consolas, monospace;
+    font-size: 9pt;
+    line-height: 1.6;
+    color: var(--near-black);
+    background: rgba(0,0,0,0.03);
+    border-radius: 3pt;
+    padding: 5pt 8pt;
+    margin: 5pt 0;
+  }
+  .formula .vn { color: var(--brand); font-weight: 500; }
+
+  /* ========== Callout ========== */
+  .callout {
+    background: transparent;
+    border-left: 1.8pt solid var(--brand);
+    padding: 4pt 0 4pt 14pt;
+    margin: 10pt 0;
+    font-size: 10pt;
+    line-height: 1.5;
+    color: var(--olive);
+    break-inside: avoid;
+  }
+  .callout .hl { color: var(--brand); }
+
+  /* ========== TABLE ========== */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9pt;
+    margin: 6pt 0;
+    break-inside: avoid;
+  }
+  table th {
+    text-align: left;
+    font-weight: 500;
+    color: var(--dark-warm);
+    padding: 3pt 5pt;
+    border-bottom: 1pt solid var(--border);
+    background: transparent;
+  }
+  table td {
+    padding: 2pt 5pt;
+    border-bottom: 0.3pt solid var(--border-soft);
+    vertical-align: top;
+  }
+  table.compact th { padding: 2pt 5pt; font-size: 8pt; }
+  table.compact td { padding: 1pt 5pt; font-size: 8pt; line-height: 1.4; }
+
+  /* ========== FOOTER ========== */
+  .footer {
+    margin-top: 14pt;
+    padding-top: 6pt;
+    border-top: 0.3pt dotted var(--border);
+    font-size: 9pt;
+    color: var(--stone);
+    display: flex;
+    justify-content: space-between;
+    letter-spacing: 0.3pt;
+  }
+
+  code {
+    font-family: "SF Mono", "Fira Code", "Source Code Pro", Consolas, monospace;
+    font-size: 9pt;
+    color: var(--near-black);
+  }
+</style>
+</head>
+<body>
+
+<!-- ========== HEADER ========== -->
+<div class="header">
+  <div class="title-block">
+    <div class="eyebrow">PI 扩展插件</div>
+    <h1>Cache Hit Rate<br>把 LLM 缓存从黑盒变成仪表盘</h1>
+    <div class="subtitle">四维指标实时展示——当前、累计、有效命中率与失效 Token</div>
+  </div>
+  <div class="meta">
+    蔡涛(CNife)<br>
+    2026.06.15<br>
+    v0.3.1
+  </div>
+</div>
+
+<!-- ========== 4 维指标横条 ========== -->
+<div class="metrics">
+  <div class="metric">
+    <div class="metric-value">C:85.50</div>
+    <div class="metric-label"><span class="dot-green"></span>当前 · Current</div>
+  </div>
+  <div class="metric">
+    <div class="metric-value">T:92.10</div>
+    <div class="metric-label"><span class="dot-green"></span>累计 · Total</div>
+  </div>
+  <div class="metric">
+    <div class="metric-value">R:96.30</div>
+    <div class="metric-label"><span class="dot-green"></span>有效 · Real</div>
+  </div>
+  <div class="metric">
+    <div class="metric-value">M:1.2k</div>
+    <div class="metric-label">失效 · Miss</div>
+  </div>
+</div>
+
+<!-- ========== M vs R 两栏（M 在左，R 在右，R 基于 M） ========== -->
+<section>
+  <h2>用四个指标抓住 LLM 缓存失效的瞬间</h2>
+  <p style="font-size:11.5pt; color:var(--dark-warm); line-height:1.55; margin-bottom:14pt;">看到 <span class="hl">R 下降、M 上升</span>，就意味着缓存失效，你多花了钱。</p>
+<div class="two-col">
+  <section>
+    <h2>M = Cache Miss Tokens<span class="sub">失效 Token</span></h2>
+    <p>M 是被浪费的输入 tokens，直接回答一个问题：<span class="hl">"本应命中的缓存没命中，多花了多少 token？"</span></p>
+    <div class="formula">
+      M = Σ&thinsp;max(0, <span class="vn">baselinePrompt</span> − <span class="vn">cacheRead</span>)
+    </div>
+    <p style="margin-top:4pt;">M 是绝对值，不是百分比——每 1 个单位都对应实实在在多送进模型的 token，是衡量缓存效率最直接的经济度量。</p>
+  </section>
+  <section>
+    <h2>R = Real Cache Hit Rate<span class="sub">有效命中率</span></h2>
+    <p>R 由 M 推导而来：M 占总输入（非缓存读取部分）的比例就是缓存浪费率，100% 减去它就是有效命中率 R。缓存最优时 R=100%，完全没有浪费。</p>
+    <div class="formula">
+      R = (1 − <span class="vn">ΣMiss</span> / (<span class="vn">ΣpromptTokens</span> − <span class="vn">ΣcacheRead</span>)) × 100
+    </div>
+  </section>
+</div>
+
+<!-- ========== 算法 ========== -->
+<section>
+  <h2>轮边界算法：正确计算有 CacheWrite 的场景</h2>
+  <div class="two-col" style="gap:14pt;">
+    <section>
+      <h2 style="margin-bottom:3pt;">OpenAI completions<span class="sub">无 cacheWrite</span></h2>
+      <p style="font-size:9pt; color:var(--olive);">每条请求的 promptTokens 不含写入开销，<code>cacheRead / promptTokens</code> 直接反映真实命中率。</p>
+    </section>
+    <section>
+      <h2 style="margin-bottom:3pt;">Anthropic messages<span class="sub">有 cacheWrite</span></h2>
+      <p style="font-size:9pt; color:var(--olive);">写入缓存的 token 也被计入 promptTokens，拉大了分母。写入消息低、复用消息高，同轮内剧烈波动。</p>
+    </section>
+  </div>
+  <p style="margin-top:8pt;">轮边界算法按用户消息切回合，前一回合最后一条助理消息的 <code>promptTokens</code> 作为后一回合基线。只有跨回合才计失效，同轮内 cacheWrite 的波动被完全隔离：</p>
+  <div class="formula" style="margin:6pt 0;">
+    <span class="vn">baselinePrompt</span> = 上一轮最后一条 asst msg 的 <span class="vn">promptTokens</span><br>
+    <span class="vn">Miss</span> = max(0, <span class="vn">baselinePrompt</span> − <span class="vn">cacheRead</span>)
+  </div>
+  <p style="margin-top:4pt;">模型切换或 compaction 时全部归零，从新上下文重建累计状态。</p>
+</section>
+
+<!-- ========== 扩展面 ========== -->
+<section>
+  <h2>3 个 Pi 扩展面<span class="sub">事件驱动 · 分支遍历 · UI 着色</span></h2>
+  <table class="compact">
+    <thead>
+      <tr><th>Pi 扩展面</th><th>Cache Hit Rate 如何使用</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>message_end</code></td><td>每次助理消息结束时增量更新四项指标</td></tr>
+      <tr><td><code>sessionManager.getBranch()</code></td><td>遍历会话分支，识别用户消息轮边界，构建累计状态</td></tr>
+      <tr><td><code>ctx.ui.setStatus</code> + <code>theme.fg()</code></td><td>将指标实时写入 footer，并按阈值着色（绿/黄/红）</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ========== 安装 ========== -->
+<div class="callout">
+  <span class="hl">➜  pi install npm:@cnife/pi-cache-hit-rate</span>
+</div>
+
+<!-- ========== FOOTER ========== -->
+<div class="footer">
+  <span>公开</span>
+  <span>github.com/CNife/pi-extensions</span>
+</div>
+
+</body>
+</html>

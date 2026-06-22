@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<!-- ==================================================================
+     ONE-PAGER TEMPLATE · parchment design system
+     auto-naming-session 插件展示卡片
+     ================================================================== -->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>auto-naming-session — 标题跟着对话一起演化</title>
+<meta name="author" content="蔡涛(CNife)">
+<meta name="description" content="在 Pi agent loop 中自动生成并刷新会话标题，让标题跟着对话内容一起演进。">
+<meta name="keywords" content="Pi, auto-naming-session, 扩展, session, 标题, 自动命名">
+<meta name="generator" content="Kami">
+<style>
+  @font-face {
+    font-family: "TsangerJinKai02";
+    src: url("https://cdn.jsdelivr.net/gh/tw93/Kami@main/assets/fonts/TsangerJinKai02-W04.ttf") format("truetype");
+    font-weight: 400;
+    font-style: normal;
+  }
+  @font-face {
+    font-family: "TsangerJinKai02";
+    src: url("https://cdn.jsdelivr.net/gh/tw93/Kami@main/assets/fonts/TsangerJinKai02-W05.ttf") format("truetype");
+    font-weight: 500;
+    font-style: normal;
+  }
+
+  @page { size: A4; margin: 15mm 18mm; background: #f5f4ed; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --parchment: #f5f4ed;
+    --ivory:     #faf9f5;
+    --near-black:#141413;
+    --dark-warm: #3d3d3a;
+    --olive:     #504e49;
+    --stone:     #6b6a64;
+    --brand:     #1B365D;
+    --border:    #e8e6dc;
+    --border-soft:#e5e3d8;
+    --serif: "TsangerJinKai02", "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", "STSong", Georgia, serif;
+  }
+
+  html, body { background: var(--parchment); }
+  @media screen { body { max-width: 210mm; margin: 0 auto; padding: 15mm 18mm; } }
+
+  body {
+    color: var(--near-black);
+    font-family: var(--serif);
+    font-size: 10pt;
+    line-height: 1.5;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .header {
+    margin-bottom: 14pt;
+    padding-bottom: 10pt;
+    border-bottom: 0.5pt solid var(--border);
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 20pt;
+  }
+  .title-block { flex: 1; }
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 7pt;
+    font-size: 9pt;
+    color: var(--brand);
+    letter-spacing: 1.5pt;
+    text-transform: uppercase;
+    margin-bottom: 7pt;
+    font-weight: 500;
+  }
+  .eyebrow::before {
+    content: "";
+    width: 8pt;
+    height: 1.5pt;
+    border-radius: 0.75pt;
+    background: var(--brand);
+    flex-shrink: 0;
+  }
+  h1 {
+    font-family: var(--serif);
+    font-size: 24pt;
+    font-weight: 500;
+    color: var(--near-black);
+    line-height: 1.15;
+    margin-bottom: 5pt;
+  }
+  .subtitle {
+    font-size: 11pt;
+    color: var(--olive);
+    line-height: 1.4;
+  }
+  .meta {
+    font-size: 9pt;
+    color: var(--stone);
+    text-align: right;
+    line-height: 1.45;
+    white-space: nowrap;
+  }
+
+  section { margin-bottom: 14pt; break-inside: avoid; }
+  section:last-of-type { margin-bottom: 0; }
+
+  h2 {
+    font-family: var(--serif);
+    font-size: 15pt;
+    font-weight: 500;
+    color: var(--near-black);
+    margin-bottom: 6pt;
+  }
+  h2 .sub {
+    font-size: 9pt;
+    color: var(--stone);
+    font-weight: 400;
+    margin-left: 6pt;
+  }
+  h3 {
+    font-family: var(--serif);
+    font-size: 11pt;
+    font-weight: 500;
+    margin-bottom: 4pt;
+  }
+
+  p { margin-bottom: 5pt; line-height: 1.5; }
+  p:last-child { margin-bottom: 0; }
+
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18pt;
+    margin-bottom: 6pt;
+  }
+
+  .pain h3 { color: #a04040; }
+  .solution h3 { color: var(--brand); }
+
+  ul.dash { margin: 0; padding-left: 16pt; }
+  ul.dash li { margin-bottom: 5pt; line-height: 1.45; }
+  ul.dash li:last-child { margin-bottom: 0; }
+  ul.dash li::marker { color: var(--brand); }
+
+  .timeline {
+    background: var(--ivory);
+    border-radius: 3pt;
+    padding: 4pt 14pt;
+    border: 0.5pt solid var(--border-soft);
+    margin-top: 4pt;
+  }
+  .timeline-step {
+    display: flex;
+    align-items: baseline;
+    gap: 8pt;
+    padding: 5pt 0;
+  }
+  .timeline-step + .timeline-step {
+    border-top: 0.5pt dashed var(--border);
+  }
+  .timeline-arrow { color: var(--brand); font-size: 9pt; flex-shrink: 0; width: 14pt; }
+  .timeline-context { font-size: 8.5pt; color: var(--stone); min-width: 72pt; flex-shrink: 0; }
+  .timeline-title { font-size: 9.5pt; font-weight: 500; }
+
+  .callout {
+    background: rgba(0,0,0,0.02);
+    border-left: 1.8pt solid var(--brand);
+    padding: 6pt 0 6pt 12pt;
+    margin: 8pt 0;
+    font-size: 9pt;
+    line-height: 1.5;
+    color: var(--near-black);
+    break-inside: avoid;
+  }
+  .callout .hl { color: var(--brand); }
+
+  .hl { color: var(--brand); }
+
+  code {
+    font-family: "SF Mono", "Fira Code", "Source Code Pro", Consolas, monospace;
+    font-size: 9pt;
+    color: var(--near-black);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9pt;
+    margin: 6pt 0;
+    break-inside: avoid;
+  }
+  table th {
+    text-align: left;
+    font-weight: 500;
+    color: var(--dark-warm);
+    padding: 3pt 5pt;
+    border-bottom: 1pt solid var(--border);
+    background: transparent;
+  }
+  table td {
+    padding: 2pt 5pt;
+    border-bottom: 0.3pt solid var(--border-soft);
+    vertical-align: top;
+  }
+  table.compact th { padding: 2pt 5pt; font-size: 8pt; }
+  table.compact td { padding: 1pt 5pt; font-size: 8pt; line-height: 1.4; }
+
+  .footer {
+    margin-top: 14pt;
+    padding-top: 6pt;
+    border-top: 0.3pt dotted var(--border);
+    font-size: 9pt;
+    color: var(--stone);
+    display: flex;
+    justify-content: center;
+    gap: 12pt;
+    flex-wrap: wrap;
+  }
+</style>
+</head>
+<body>
+
+<!-- ========== HEADER ========== -->
+<div class="header">
+  <div class="title-block">
+    <div class="eyebrow">PI 扩展插件</div>
+    <h1>auto-naming-session<br>标题跟着对话一起演化</h1>
+    <div class="subtitle">自动生成并刷新会话标题，让标题始终反映当前的真实主题。</div>
+  </div>
+  <div class="meta">
+    蔡涛(CNife)<br>
+    2026.06.15<br>
+    v0.2.0
+  </div>
+</div>
+
+<!-- ========== PAIN vs SOLUTION ========== -->
+<div class="two-col">
+  <section class="pain">
+    <h3>通常做法：只看开头</h3>
+    <ul class="dash">
+      <li>标题取对话前几条消息生成，不再更新</li>
+      <li>对话逐渐演进到真正主题，标题还停留在开头</li>
+      <li>回头找历史会话时，标题和内容对不上</li>
+    </ul>
+  </section>
+  <section class="solution">
+    <h3>auto-naming：持续演进</h3>
+    <ul class="dash">
+      <li>第一条消息到后立即生成初始标题</li>
+      <li>每 N 个 turn 增量刷新——只看新内容，不重复总结</li>
+      <li>标题随对话逐步收敛到真实主题</li>
+    </ul>
+  </section>
+</div>
+
+<!-- ========== TITLE EVOLUTION ========== -->
+<section>
+  <h2>标题演进示例</h2>
+  <div class="timeline">
+    <div class="timeline-step">
+      <div class="timeline-arrow">▸</div>
+      <div class="timeline-context">turn 1 · 用户发消息</div>
+      <div class="timeline-title">「PostgreSQL 连接失败」</div>
+    </div>
+    <div class="timeline-step">
+      <div class="timeline-arrow">▸</div>
+      <div class="timeline-context">turn 2–5 · 排查配置</div>
+      <div class="timeline-title">「PG 连接池配置排查」</div>
+    </div>
+    <div class="timeline-step">
+      <div class="timeline-arrow">▸</div>
+      <div class="timeline-context">turn 6–12 · 深入源码</div>
+      <div class="timeline-title">「连接池性能分析与优化方案」</div>
+    </div>
+    <div class="timeline-step">
+      <div class="timeline-arrow">▸</div>
+      <div class="timeline-context">turn 13+ · 重构</div>
+      <div class="timeline-title">「重写连接池模块——决策记录」</div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== CORE MECHANISM ========== -->
+<section>
+  <h2>核心机制</h2>
+  <div class="callout">
+    增量刷新：每次只总结自上次命名后的新对话内容（基于 session entry id 追踪），不会把整段历史丢给 LLM 重新生成。
+  </div>
+  <ul class="dash">
+    <li><span class="hl">首条触发</span>——第一条 user message 到达后立即生成初始标题，不等待 agent 回合</li>
+    <li><span class="hl">自动刷新</span>——默认每 10 个 turn 触发一次，由 <code>agent_end</code> 事件驱动</li>
+    <li><span class="hl">手动保护</span>——用户手动改过标题后，auto-naming 检测到变化并停止覆盖</li>
+  </ul>
+</section>
+
+<!-- ========== CONFIG ========== -->
+<section>
+  <h2>配置项</h2>
+  <table class="compact">
+    <thead>
+      <tr><th>字段</th><th>默认</th><th>说明</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>auto_refresh_turns</code></td><td><code>10</code></td><td>每 N turn 刷新，<code>null</code> 禁用</td></tr>
+      <tr><td><code>model</code></td><td><code>null</code></td><td>指定命名模型（<code>provider/modelId</code>），<code>null</code> 复用当前模型</td></tr>
+      <tr><td><code>language</code></td><td><code>"english"</code></td><td>标题语言</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ========== INSTALL ========== -->
+<div class="callout" style="border-left:1.8pt solid var(--brand); margin-top:4pt; padding:4pt 0 4pt 14pt;">
+  <span class="hl">➜  pi install npm:@cnife/pi-auto-naming-session</span>
+</div>
+
+<!-- ========== FOOTER ========== -->
+<div class="footer">
+  <span>公开</span>
+  <span>github.com/CNife/pi-extensions</span>
+</div>
+
+</body>
+</html>
