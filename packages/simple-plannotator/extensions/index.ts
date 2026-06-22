@@ -202,16 +202,12 @@ function normalizeUserPath(raw: string): string {
   // Strip @ prefix from file references (e.g. @file.md -> file.md)
   const stripped = trimmed.startsWith("@") ? trimmed.slice(1) : trimmed;
   const unquoted = stripped.replace(/^["']|["']$/g, "");
-  return expandHomePath(unquoted);
-}
-
-function expandHomePath(input: string): string {
   const home = homedir();
-  if (input === "~") return home;
-  if (input.startsWith("~/") || input.startsWith("~\\")) {
-    return home + input.slice(1);
+  if (unquoted === "~") return home;
+  if (unquoted.startsWith("~/") || unquoted.startsWith("~\\")) {
+    return home + unquoted.slice(1);
   }
-  return input;
+  return unquoted;
 }
 
 function scanMarkdownFiles(dirPath: string, depth = 0): boolean {

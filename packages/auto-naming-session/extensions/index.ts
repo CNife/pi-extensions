@@ -4,6 +4,7 @@ import type { Model, TextContent } from "@earendil-works/pi-ai";
 import { completeSimple } from "@earendil-works/pi-ai";
 import {
   type ExtensionAPI,
+  type ExtensionContext,
   getAgentDir,
 } from "@earendil-works/pi-coding-agent";
 
@@ -175,19 +176,21 @@ function isTitleManuallyChanged(
 
 // ──── Transcript Building ────────────────────────────────────────
 
+function messageContentToText(
+  content: string | Array<{ type: string; text?: string }>,
+): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter((c): c is { type: "text"; text: string } => c.type === "text")
+      .map((c) => c.text)
+      .join(" ");
+  }
+  return "";
+}
+
 function buildTranscript(
-  ctx: {
-    sessionManager: {
-      getBranch: () => Array<{
-        type: string;
-        id?: string;
-        message?: {
-          role: string;
-          content: string | Array<{ type: string; text?: string }>;
-        };
-      }>;
-    };
-  },
+  ctx: ExtensionContext,
   lastEntryId: string | null,
 ): string | null {
   const branch = ctx.sessionManager.getBranch();
@@ -205,19 +208,7 @@ function buildTranscript(
 
     if (entry.type === "message" && entry.message) {
       if (entry.message.role === "user" || entry.message.role === "assistant") {
-        const content = entry.message.content;
-        const text =
-          typeof content === "string"
-            ? content
-            : Array.isArray(content)
-              ? content
-                  .filter(
-                    (c): c is { type: "text"; text: string } =>
-                      c.type === "text",
-                  )
-                  .map((c) => c.text)
-                  .join(" ")
-              : "";
+        const text = messageContentToText(entry.message.content);
         if (text) {
           parts.push(`${entry.message.role}: ${text}`);
         }
@@ -235,6 +226,105 @@ function parseModelRef(
   const parts = ref.split("/");
   if (parts.length !== 2 || !parts[0] || !parts[1]) return undefined;
   return { provider: parts[0], id: parts[1] };
+}
+
+async function generateTitle(
+  ctx: ExtensionContext,
+  config: AutoNamingConfig,
+  transcript: string,
+  notifyErrors: boolean,
+): Promise<string | null> {
+  // 解析模型
+  let model: Model<any> | undefined;
+  if (config.model) {
+    const parsed = parseModelRef(config.model);
+    if (!parsed) {
+      if (notifyErrors) {
+        ctx.ui.notify(
+          `Invalid model "${config.model}". Use "provider/modelId"`,
+          "warning",
+        );
+      }
+      return null;
+    }
+    model = ctx.modelRegistry.find(parsed.provider, parsed.id);
+    if (!model) {
+      if (notifyErrors) {
+        ctx.ui.notify(`Model "${config.model}" not found`, "warning");
+      }
+      return null;
+    }
+  } else {
+    model = ctx.model;
+    if (!model) return null;
+  }
+
+  // 获取认证
+  const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+  if (!auth.ok) {
+    if (notifyErrors) {
+      ctx.ui.notify(`Auth failed: ${auth.error}`, "warning");
+    }
+    return null;
+  }
+
+  // 调用 LLM
+  const userMessage = `Conversation:\n\n${transcript}\n\nSynthesize the full scope of this conversation into a concise title in ${config.language}.`;
+  const systemPrompt = `You are a session titling assistant. Generate a concise, descriptive title (max 60 chars) for the following conversation in ${config.language}. Consider the overall conversation arc, key topics, and primary goals rather than focusing on the most recent messages. Output ONLY the title, no quotes, no explanation.`;
+
+  const response = await completeSimple(
+    model,
+    {
+      systemPrompt,
+      messages: [{ role: "user", content: userMessage, timestamp: Date.now() }],
+    },
+    {
+      apiKey: auth.apiKey,
+      headers: auth.headers,
+      maxTokens: 60,
+    },
+  );
+
+  if (response.stopReason === "error" || response.stopReason === "aborted") {
+    ctx.ui.notify(
+      `Title gen failed: ${response.errorMessage ?? response.stopReason}`,
+      "warning",
+    );
+    return null;
+  }
+
+  // 提取标题
+  const title = response.content
+    .filter((c): c is TextContent & { type: "text" } => c.type === "text")
+    .map((c) => c.text)
+    .join("")
+    .trim()
+    .slice(0, 60);
+
+  if (!title) {
+    if (notifyErrors) {
+      ctx.ui.notify("Generated empty title, skipping", "warning");
+    }
+    return null;
+  }
+
+  return title;
+}
+
+function applyTitle(
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  state: AutoNamingState,
+  title: string,
+): void {
+  pi.setSessionName(title);
+  pi.appendEntry("auto-naming-title", {
+    title,
+    lastEntryId: state.lastEntryId,
+    timestamp: Date.now(),
+  });
+  state.lastEntryId = ctx.sessionManager.getLeafId() ?? null;
+  state.firstTitleGenerated = true;
 }
 
 // ──── Constants ────────────────────────────────────────────────
@@ -281,93 +371,11 @@ export default function (pi: ExtensionAPI) {
     if (isTitleManuallyChanged(currentName, lastEntry)) return;
 
     try {
-      // 1. 解析模型
-      let model: Model<any> | undefined;
-      if (config.model) {
-        const parsed = parseModelRef(config.model);
-        if (!parsed) {
-          ctx.ui.notify(
-            `Invalid model "${config.model}". Use "provider/modelId"`,
-            "warning",
-          );
-          return;
-        }
-        model = ctx.modelRegistry.find(parsed.provider, parsed.id);
-        if (!model) {
-          ctx.ui.notify(`Model "${config.model}" not found`, "warning");
-          return;
-        }
-      } else {
-        model = ctx.model;
-        if (!model) return;
-      }
-
-      // 2. 获取认证
-      const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
-      if (!auth.ok) {
-        ctx.ui.notify(`Auth failed: ${auth.error}`, "warning");
-        return;
-      }
-
-      // 3. 构建对话上下文
       const transcript = buildTranscript(ctx, state.lastEntryId);
       if (!transcript) return;
 
-      // 4. 调用 LLM
-      const userMessage = `Conversation:\n\n${transcript}\n\nSynthesize the full scope of this conversation into a concise title in ${config.language}.`;
-
-      const systemPrompt = `You are a session titling assistant. Generate a concise, descriptive title (max 60 chars) for the following conversation in ${config.language}. Consider the overall conversation arc, key topics, and primary goals rather than focusing on the most recent messages. Output ONLY the title, no quotes, no explanation.`;
-
-      const response = await completeSimple(
-        model,
-        {
-          systemPrompt,
-          messages: [
-            { role: "user", content: userMessage, timestamp: Date.now() },
-          ],
-        },
-        {
-          apiKey: auth.apiKey,
-          headers: auth.headers,
-          maxTokens: 60,
-        },
-      );
-
-      if (
-        response.stopReason === "error" ||
-        response.stopReason === "aborted"
-      ) {
-        ctx.ui.notify(
-          `Title gen failed: ${response.errorMessage ?? response.stopReason}`,
-          "warning",
-        );
-        return;
-      }
-
-      // 5. 提取标题
-      const title = response.content
-        .filter((c): c is TextContent & { type: "text" } => c.type === "text")
-        .map((c) => c.text)
-        .join("")
-        .trim()
-        .slice(0, 60);
-
-      if (!title) {
-        ctx.ui.notify("Generated empty title, skipping", "warning");
-        return;
-      }
-
-      // 6. 应用标题
-      pi.setSessionName(title);
-
-      // 7. 持久化元数据（用于手动保护）
-      pi.appendEntry("auto-naming-title", {
-        title,
-        lastEntryId: state.lastEntryId,
-        timestamp: Date.now(),
-      });
-      state.lastEntryId = ctx.sessionManager.getLeafId() ?? null;
-      state.firstTitleGenerated = true;
+      const title = await generateTitle(ctx, config, transcript, true);
+      if (title) applyTitle(pi, ctx, state, title);
     } catch (err) {
       ctx.ui.notify(
         `Error: ${err instanceof Error ? err.message : String(err)}`,
@@ -382,82 +390,13 @@ export default function (pi: ExtensionAPI) {
     if (state.firstTitleGenerated) return;
 
     try {
-      let model: Model<any> | undefined;
-      if (config.model) {
-        const parsed = parseModelRef(config.model);
-        if (!parsed) return;
-        model = ctx.modelRegistry.find(parsed.provider, parsed.id);
-      } else {
-        model = ctx.model;
-        if (!model) return;
-      }
-
-      const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
-      if (!auth.ok) return;
-
       // 直接用 event.message 构建 transcript（此时 message 尚未进入 branch）
-      const msgContent = event.message.content;
-      const text =
-        typeof msgContent === "string"
-          ? msgContent
-          : Array.isArray(msgContent)
-            ? msgContent
-                .filter(
-                  (c): c is { type: "text"; text: string } => c.type === "text",
-                )
-                .map((c) => c.text)
-                .join(" ")
-            : "";
+      const text = messageContentToText(event.message.content);
       if (!text) return;
 
       const transcript = `user: ${text}`;
-      const userMessage = `Conversation:\n\n${transcript}\n\nSynthesize the full scope of this conversation into a concise title in ${config.language}.`;
-
-      const systemPrompt = `You are a session titling assistant. Generate a concise, descriptive title (max 60 chars) for the following conversation in ${config.language}. Consider the overall conversation arc, key topics, and primary goals rather than focusing on the most recent messages. Output ONLY the title, no quotes, no explanation.`;
-
-      const response = await completeSimple(
-        model,
-        {
-          systemPrompt,
-          messages: [
-            { role: "user", content: userMessage, timestamp: Date.now() },
-          ],
-        },
-        {
-          apiKey: auth.apiKey,
-          headers: auth.headers,
-          maxTokens: 60,
-        },
-      );
-
-      if (
-        response.stopReason === "error" ||
-        response.stopReason === "aborted"
-      ) {
-        ctx.ui.notify(
-          `Title gen failed: ${response.errorMessage ?? response.stopReason}`,
-          "warning",
-        );
-        return;
-      }
-
-      const title = response.content
-        .filter((c): c is TextContent & { type: "text" } => c.type === "text")
-        .map((c) => c.text)
-        .join("")
-        .trim()
-        .slice(0, 60);
-
-      if (!title) return;
-
-      pi.setSessionName(title);
-      pi.appendEntry("auto-naming-title", {
-        title,
-        lastEntryId: state.lastEntryId,
-        timestamp: Date.now(),
-      });
-      state.lastEntryId = ctx.sessionManager.getLeafId() ?? null;
-      state.firstTitleGenerated = true;
+      const title = await generateTitle(ctx, config, transcript, false);
+      if (title) applyTitle(pi, ctx, state, title);
     } catch {
       // 首次生成失败不阻塞，等 agent_end 再试
     }

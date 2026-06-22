@@ -119,10 +119,6 @@ function loadConfig(): AgentLoopReflectionConfig | null {
 // Single countdown: how many more assistant turns before the next reminder.
 let turnsUntilNextReminder = 0;
 
-function resetCadence(value: number): void {
-  turnsUntilNextReminder = value;
-}
-
 function setConfigErrorStatus(ctx: ExtensionContext): void {
   ctx.ui.setStatus(
     STATUS_KEY,
@@ -141,17 +137,27 @@ export default function (pi: ExtensionAPI) {
     return;
   }
 
-  resetCadence(config.reminderTurnsInterval);
+  turnsUntilNextReminder = config.reminderTurnsInterval;
 
-  pi.on("session_start", () => resetCadence(config.reminderTurnsInterval));
-  pi.on("session_tree", () => resetCadence(config.reminderTurnsInterval));
-  pi.on("session_compact", () => resetCadence(config.reminderTurnsInterval));
-  pi.on("agent_start", () => resetCadence(config.reminderTurnsInterval));
-  pi.on("agent_end", () => resetCadence(config.reminderTurnsInterval));
+  pi.on("session_start", () => {
+    turnsUntilNextReminder = config.reminderTurnsInterval;
+  });
+  pi.on("session_tree", () => {
+    turnsUntilNextReminder = config.reminderTurnsInterval;
+  });
+  pi.on("session_compact", () => {
+    turnsUntilNextReminder = config.reminderTurnsInterval;
+  });
+  pi.on("agent_start", () => {
+    turnsUntilNextReminder = config.reminderTurnsInterval;
+  });
+  pi.on("agent_end", () => {
+    turnsUntilNextReminder = config.reminderTurnsInterval;
+  });
 
   pi.on("input", (event) => {
     if (event.source === "extension") return;
-    resetCadence(config.reminderTurnsInterval);
+    turnsUntilNextReminder = config.reminderTurnsInterval;
   });
 
   pi.on("turn_end", (event) => {
