@@ -25,6 +25,7 @@
   auto         从 payload model 字段自动识别, 默认 deepseek
 """
 
+import argparse
 import json
 import os
 import shutil
@@ -78,25 +79,22 @@ TARGET = f"{SESSION}:1.1"
 # ── CLI arg parsing ──────────────────────────────────────────
 
 def parse_args():
-    args = {"analyze_only": False, "tokenizer": "deepseek", "dir": None}
-    i = 1
-    while i < len(sys.argv):
-        arg = sys.argv[i]
-        if arg in ("--help", "-h"):
-            print(__doc__.strip())
-            sys.exit(0)
-        elif arg == "--analyze-only":
-            args["analyze_only"] = True
-        elif arg == "--tokenizer":
-            i += 1
-            if i < len(sys.argv):
-                args["tokenizer"] = sys.argv[i]
-        elif arg == "--dir":
-            i += 1
-            if i < len(sys.argv):
-                args["dir"] = sys.argv[i]
-        i += 1
-    return args
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--analyze-only", action="store_true", help="只分析已有 payload"
+    )
+    parser.add_argument(
+        "--tokenizer",
+        default="deepseek",
+        help="指定分词器 (deepseek/cl100k_base/o200k_base/auto)",
+    )
+    parser.add_argument(
+        "--dir", default=None, help="从指定目录分析 payload"
+    )
+    return vars(parser.parse_args())
 
 
 # ── Phase 1: Capture ──────────────────────────────────────────
