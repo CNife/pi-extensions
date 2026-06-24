@@ -61,10 +61,7 @@ const WEEKDAYS = [
 ];
 
 function saveDefaultConfig(path: string): void {
-  const dir = dirname(path);
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
-  }
+  mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(DEFAULT_CONFIG, null, 2)}\n`, "utf-8");
 }
 
@@ -154,11 +151,9 @@ function isPathWithin(filePath: string, baseDir: string): boolean {
 
 interface DiaryPaths {
   diaryPath: string;
-  monthDir: string;
-  templatePath: string;
 }
 
-/** 复刻旧 compute_paths：{base}/{diary_dir}/{year}/{month:02d}/{year}年{month}月{day}日{星期}.md */
+/** {base}/{diary_dir}/{year}/{month:02d}/{year}年{month}月{day}日{星期}.md */
 function computeDiaryPaths(
   vault: VaultConfig,
   date: Date = new Date(),
@@ -175,17 +170,14 @@ function computeDiaryPaths(
     String(year),
     String(month).padStart(2, "0"),
   );
-  const filename = `${year}年${month}月${day}日${weekday}.md`;
   return {
-    diaryPath: join(monthDir, filename),
-    monthDir,
-    templatePath: join(base, vault.diary_dir, vault.template),
+    diaryPath: join(monthDir, `${year}年${month}月${day}日${weekday}.md`),
   };
 }
 
 // ──── Scanning (复刻旧 _scan_todos / _scan_recent) ──────────────
 
-const TODO_PATTERN = /^\s*-\s*\[([ ^>!/?~br])\]\s+(.+)$/;
+const TODO_PATTERN = /^\s*-\s*\[ \]\s+(.+)$/;
 
 interface Todo {
   file: string;
@@ -211,7 +203,7 @@ function walkMd(dir: string, cb: (filePath: string) => void): void {
     const fullPath = join(dir, entry.name);
     if (entry.isDirectory()) {
       walkMd(fullPath, cb);
-    } else if (entry.isFile() && /\.md$/i.test(entry.name)) {
+    } else if (entry.isFile() && entry.name.endsWith(".md")) {
       cb(fullPath);
     }
   }
@@ -250,7 +242,6 @@ function scanTodos(vault: VaultConfig, days = 14): Todo[] {
 function scanRecent(
   vault: VaultConfig,
   days = 10,
-  limit = 3,
   excludePath?: string,
 ): RecentDiary[] {
   const base = expandHome(vault.base);
@@ -268,10 +259,9 @@ function scanRecent(
   });
 
   found.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
-  const filtered = excludePath
-    ? found.filter((f) => f.path !== excludePath)
-    : found;
-  const top = limit > 0 ? filtered.slice(0, limit) : filtered;
+  const top = (
+    excludePath ? found.filter((f) => f.path !== excludePath) : found
+  ).slice(0, 3);
 
   return top.map((f) => {
     const content = readFileSync(f.path, "utf-8");
@@ -416,16 +406,13 @@ function buildContextSection(c: VaultContext): string {
   ].join("\n");
 }
 
-/** 提取 JSON：优先围栏，否则取首个 { 到末个 } 之间内容，兜底裸文本。 */
+/** 提取 JSON：优先围栏内，否则取首个 { 到末个 }，兜底裸文本。 */
 function extractJson(text: string): string {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fenced) return fenced[1].trim();
   const trimmed = text.trim();
-  if (trimmed.startsWith("{") && trimmed.endsWith("}")) return trimmed;
-  const start = trimmed.indexOf("{");
-  const end = trimmed.lastIndexOf("}");
-  if (start >= 0 && end > start) return trimmed.slice(start, end + 1);
-  return trimmed;
+  const m = trimmed.match(/\{[\s\S]*\}/);
+  return m ? m[0] : trimmed;
 }
 
 async function generateDiarySummary(
@@ -584,7 +571,7 @@ export default function (pi: ExtensionAPI): void {
           name,
           paths,
           todos: scanTodos(vault),
-          recent: scanRecent(vault, 10, 3, paths.diaryPath),
+          recent: scanRecent(vault, 10, paths.diaryPath),
           today: safeReadFile(paths.diaryPath),
         };
       });
