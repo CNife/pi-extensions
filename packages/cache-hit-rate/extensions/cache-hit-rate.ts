@@ -290,8 +290,8 @@ function applyColor(
 }
 
 function fmtPercent(p: number | null): string {
-  if (p === null) return "--.--";
-  return p.toFixed(2);
+  if (p === null) return "--.-";
+  return p.toFixed(1);
 }
 
 function formatStatus(
@@ -300,7 +300,7 @@ function formatStatus(
   colorRules: ColorRule[],
 ): string {
   if (state.totalPromptTokens <= 0) {
-    const empty = "Cache C:--.-- T:--.-- R:--.-- M:--";
+    const empty = "Cache C--.-% T--.-% R--.-% M--";
     return ctx.ui.theme.fg("dim", empty);
   }
 
@@ -323,23 +323,23 @@ function formatStatus(
 
   const cText = applyColor(
     ctx,
-    `C:${fmtPercent(cPercent)}`,
+    `C${fmtPercent(cPercent)}%`,
     cPercent ?? 0,
     colorRules,
   );
   const tText = applyColor(
     ctx,
-    `T:${fmtPercent(tPercent)}`,
+    `T${fmtPercent(tPercent)}%`,
     tPercent ?? 0,
     colorRules,
   );
   const rText = applyColor(
     ctx,
-    `R:${fmtPercent(rPercent)}`,
+    `R${fmtPercent(rPercent)}%`,
     rPercent ?? 0,
     colorRules,
   );
-  const mText = `M:${fmtCompact(state.totalMissTokens)}`;
+  const mText = `M${fmtCompact(state.totalMissTokens)}`;
 
   return `Cache ${cText} ${tText} ${rText} ${mText}`;
 }
