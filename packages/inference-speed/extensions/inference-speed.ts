@@ -11,13 +11,13 @@ import type {
  * Inference Speed — 在 pi footer 常驻显示当前 assistant message 的
  * 推理速度（TPS，tokens/s）和首 token 延迟（TTFT，秒）。
  *
- * - TPS = usage.output / message 生成耗时（output/elapsed 公式参考 tps.ts）
- * - TTFT = 首 token 时刻 − 请求发出时刻（before_provider_request → 首个 _delta）
+ * - TPS = usage.output / message 生成耗时（output/elapsed 公式参考 tps.ts），显示为 `NN.NT/s`
+ * - TTFT = 首 token 时刻 − 请求发出时刻（before_provider_request → 首个 _delta），显示为 `FTN.Ns`
  * - 每条 assistant message 结束后刷新 footer，保持到下一条
  */
 
 const STATUS_KEY = "inference-speed";
-const EMPTY = "TPS--.-T/s TTFT -.-s";
+const EMPTY = "--.-T/s FT -.-s";
 
 type SpeedSample = {
   tps: number;
@@ -38,7 +38,7 @@ function publish(ctx: ExtensionContext, sample: SpeedSample | null): void {
     ctx.ui.setStatus(STATUS_KEY, ctx.ui.theme.fg("dim", EMPTY));
     return;
   }
-  const text = `TPS${sample.tps.toFixed(1)}T/s TTFT${sample.ttft.toFixed(1)}s`;
+  const text = `${sample.tps.toFixed(1)}T/s FT${sample.ttft.toFixed(1)}s`;
   ctx.ui.setStatus(STATUS_KEY, text);
 }
 

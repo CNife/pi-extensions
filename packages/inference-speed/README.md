@@ -10,10 +10,10 @@
 ### Footer 格式
 
 ```text
-TPS123.4T/s TTFT1.2s
+12.3T/s FT1.2s
 ```
 
-- 无数据时显示 `TPS--.-T/s TTFT -.-s`（dim 色）
+- 无数据时显示 `--.-T/s FT -.-s`（dim 色）
 - 每条 assistant message 结束后刷新，保持到下一条
 
 ### 计算口径
@@ -46,5 +46,5 @@ pi install npm:@cnife/pi-inference-speed
 
 | 现象 | 原因 | 解决 |
 |------|------|------|
-| Footer 显示 `TPS--.-T/s TTFT -.-s` | 当前会话还没有有效的 assistant message | 发送一条消息后会自动更新 |
+| Footer 显示 `--.-T/s FT -.-s` | 当前会话还没有有效的 assistant message | 发送一条消息后会自动更新 |
 | TPS 数值异常大 | 极短 message（output 少、耗时极短） | 属正常现象，长 message 会稳定 |
