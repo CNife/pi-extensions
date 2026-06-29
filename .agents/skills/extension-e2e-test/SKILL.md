@@ -1,117 +1,127 @@
 ---
 name: extension-e2e-test
-description: "End-to-end test pi extensions using tmux. Covers isolation loading, multi-model testing, footer/state verification, and session lifecycle. Make sure to use this skill whenever the user wants to verify an extension works, test changes to an extension, debug a broken extension, or run model-comparison tests — even if they just say \"测一下扩展\" or \"看看这个插件\". NOT for general tmux usage outside of pi extension testing. Triggers: 测试扩展/E2E验证/跑一下tmux/验证插件效果/footer显示不对/扩展不工作/extension not showing/local extension test."
-when_to_use: "测试扩展, E2E验证, 插件测试, tmux, 验证footer, 扩展不工作, extension e2e, 本地测试扩展"
+description: "End-to-end test pi extensions using herdr. Covers isolation loading, multi-model testing, footer/state verification, and session lifecycle. Make sure to use this skill whenever you want to verify an extension works, test changes to an extension, debug a broken extension, or run model-comparison tests — even if they just say \"测一下扩展\" or \"看看这个插件\". NOT for general herdr usage outside of pi extension testing. Triggers: 测试扩展/E2E验证/herdr/插件测试/验证插件效果/footer显示不对/扩展不工作/extension not showing/local extension test."
+when_to_use: "测试扩展, E2E验证, 插件测试, herdr, 验证footer, 扩展不工作, extension e2e, 本地测试扩展"
 ---
 
 # Extension E2E Test
 
-End-to-end validation of pi extensions in an isolated tmux environment. This skill simulates real user interaction — sending messages, switching models, and reading the footer status line — to verify extension behavior across turns and model boundaries.
+End-to-end validation of pi extensions in an isolated herdr workspace. This skill simulates real user interaction — sending messages, switching models, and reading the footer status line — to verify extension behavior across turns and model boundaries.
+
+> 🔴 **Requires herdr**: This skill only works when running inside herdr (`HERDR_ENV=1`). If not set, stop — the herdr CLI talks to the running herdr instance over a local unix socket and has no effect outside.
 
 ## Prerequisites
 
-- `tmux` installed (stock config, no plugins needed)
+- `herdr` installed and available in PATH
+- `HERDR_ENV=1` (running inside herdr)
 - `pi` command available (compiled or via `npx`)
 - Extension source file path known
 
----
-
 ## Workflow
 
-### 1. Prepare the environment
+### 1. Create an isolated workspace
+
+Use `--no-focus` so the test workspace doesn't steal your current focus.
 
 ```bash
-# Socket directory for all agent tmux sessions
-SOCKET_DIR="${TMPDIR:-/tmp}/claude-tmux-sockets"
-mkdir -p "$SOCKET_DIR"
-SOCKET="$SOCKET_DIR/pi-e2e.sock"
-SESSION="pi-e2e"
-LOG_FILE="/tmp/pi-e2e-${SESSION}.log"
-
-# Kill any leftover session from a previous run
-tmux -S "$SOCKET" kill-session -t "$SESSION" 2>/dev/null
-
-# Determine absolute extension path
-EXT_PATH="$(pwd)/packages/<name>/extensions/<file>.ts"
+EXT_PATH="$(pwd)/packages/<pkg>/extensions/<file>.ts"
+WS_JSON=$(herdr workspace create --cwd "$(pwd)" --label "pi-e2e-<ext>" --no-focus)
+ROOT_PANE=$(echo "$WS_JSON" | python3 -c 'import sys,json; print(json.load(sys.stdin)["result"]["root_pane"]["pane_id"])')
+WID=$(echo "$WS_JSON" | python3 -c 'import sys,json; print(json.load(sys.stdin)["result"]["workspace"]["workspace_id"])')
 ```
+
+Keep `$ROOT_PANE` and `$WID` — you'll use them in every subsequent step.
 
 ### 2. Start pi with the extension loaded in isolation
 
-```bash
-# -ne: no auto-discovered extensions
-# -ns: no skills
-# -e: load only the extension under test
-# 2>&1 | tee log: capture output for later analysis
-tmux -S "$SOCKET" new-session -d -s "$SESSION" -x 120 -y 40 \; \
-  send-keys "cd $(pwd) && pi --no-extensions --no-skills -e '$EXT_PATH' 2>&1 | tee $LOG_FILE" Enter
+The pane is a real PTY — pi's TUI renders naturally (unlike tmux where `2>&1 | tee` breaks rendering).
 
-# Wait for pi to fully start
-sleep 4
+```bash
+# -ne: no auto-discovered extensions · -ns: no skills · -e: load only the extension under test
+herdr pane run "$ROOT_PANE" "pi --no-extensions --no-skills -e '$EXT_PATH'"
 ```
 
-### 3. Verify baseline state
+### 3. Wait for pi to be ready and verify baseline state
 
 ```bash
-# Capture the footer area
-tmux -S "$SOCKET" capture-pane -p -J -t "$SESSION" -S -5 2>&1 | tail -5
+# Wait for pi to finish booting (agent_status transitions to idle)
+herdr wait agent-status "$ROOT_PANE" --status idle --timeout 20000
+
+# Alternative if agent-status doesn't detect pi: wait for version banner
+# herdr wait output "$ROOT_PANE" --source visible --match "pi v" --timeout 20000
+
+# Read the TUI footer — always use --source visible for full-screen TUI apps
+herdr pane read "$ROOT_PANE" --source visible --lines 50 | tail -5
 ```
 
-Expected: pi's status line visible at the bottom, extension's footer status showing initial/empty state (e.g. `Cache C:--.-- T:--.-- R:--.-- M:--` for a cache extension).
+**Expected**: pi's status line visible at the bottom, extension's footer showing initial/empty state (e.g. `--.-T/s FT -.-s` for inference-speed, `Cache C--.-% T--.-% R--.-% M--` for cache-hit-rate).
 
-### 4. Send a test message and verify response
+> ⚠️ **Always use `--source visible` for TUI apps like pi.** The `recent` / `recent-unwrapped` sources read scrollback history — full-screen TUIs don't produce scrollback, so these return empty content. Also always specify `--lines N`; without it, `pane read` returns only **1 line**.
+
+### 4. Send a test message and verify the response footer
 
 ```bash
-tmux -S "$SOCKET" send-keys -t "$SESSION" -- "<test prompt>" Enter
+herdr pane send-text "$ROOT_PANE" "<test prompt>"
+herdr pane send-keys "$ROOT_PANE" Enter
 ```
 
-**Timing**: Wait for the model to respond. Use a baseline sleep (30-60s depending on model), then verify:
+Wait for the model to respond using `wait output` targeting the footer line. For a fast model, 30s is enough; reasoning models (glm-5.2, deepseek with xhigh) can take 120s+.
 
 ```bash
-tmux -S "$SOCKET" capture-pane -p -J -t "$SESSION" -S -10 2>&1 | grep "^<ext-status-key>"
+# Wait for the footer to show populated values (regex: any digit in the status line)
+herdr wait output "$ROOT_PANE" --source visible \
+  --match '[0-9]' --regex --timeout 120000
+
+# Read the updated footer
+herdr pane read "$ROOT_PANE" --source visible --lines 50 | tail -3
 ```
 
-The extension's footer line is the primary verification target. Also check that the model responded (text visible above the footer).
+`wait output --source visible` polls the current viewport — more precise than a fixed `sleep`. Pass `--regex` for flexible matching (e.g., match a digit to distinguish populated values from placeholders).
 
-Repeat for the second turn to verify cross-turn state:
+Repeat for a second turn to verify cross-turn state:
 
 ```bash
-tmux -S "$SOCKET" send-keys -t "$SESSION" -- "<test prompt 2>" Enter
-sleep 30
-tmux -S "$SOCKET" capture-pane -p -J -t "$SESSION" -S -10 2>&1 | grep "^<ext-status-key>"
+herdr pane send-text "$ROOT_PANE" "<test prompt 2>"
+herdr pane send-keys "$ROOT_PANE" Enter
+herdr wait output "$ROOT_PANE" --source visible \
+  --match '[0-9]' --regex --timeout 120000
+herdr pane read "$ROOT_PANE" --source visible --lines 50 | tail -3
 ```
 
-### 5. Multi-model testing
+### 5. Multi-model testing (optional)
 
-Test with a model that has the feature AND one that doesn't to verify graceful degradation.
+Verify graceful degradation by testing with a model that has the feature and one that doesn't.
 
 ```bash
-# Switch model (in-session)
-tmux -S "$SOCKET" send-keys -t "$SESSION" -- "/model <model-id>" Enter
-sleep 3
+# Switch model in-session
+herdr pane run "$ROOT_PANE" "/model <model-id>"
 
-# Verify state reset (extension should reinitialize)
-tmux -S "$SOCKET" capture-pane -p -J -t "$SESSION" -S -10 2>&1 | grep "^<ext-status-key>"
-# Expected: metrics reset to initial/empty state
+# Session resets — extension should reinitialize to empty state
+herdr wait output "$ROOT_PANE" --source visible \
+  --match '<empty-placeholder-pattern>' --timeout 10000
 
-# Send test messages with the new model
-tmux -S "$SOCKET" send-keys -t "$SESSION" -- "<test prompt>" Enter
-sleep 35
-tmux -S "$SOCKET" capture-pane -p -J -t "$SESSION" -S -10 2>&1 | grep "^<ext-status-key>"
+# Read baseline after model switch
+herdr pane read "$ROOT_PANE" --source visible --lines 50 | tail -3
+
+# Send a test message with the new model
+herdr pane send-text "$ROOT_PANE" "<test prompt>"
+herdr pane send-keys "$ROOT_PANE" Enter
+herdr wait output "$ROOT_PANE" --source visible \
+  --match '[0-9]' --regex --timeout 120000
+herdr pane read "$ROOT_PANE" --source visible --lines 50 | tail -3
 ```
 
 ### 6. Clean up
 
 ```bash
-tmux -S "$SOCKET" kill-session -t "$SESSION" 2>/dev/null
+herdr workspace close "$WID"
 ```
 
-The log file (`$LOG_FILE`) retains the full session for post-hoc analysis.
-
----
+This terminates pi and all processes running in the workspace's panes. Unlike tmux (where you'd send Ctrl+D then `kill-session`), herdr's `send-keys` does NOT support `C-d` — always use `workspace close` for cleanup.
 
 ## Startup Options
 
-Start pi with a specific model and thinking level for targeted testing:
+Start pi with a specific model and thinking level:
 
 ```bash
 pi --no-extensions --no-skills -e '$EXT_PATH' --model alibaba-cn/qwen3.7-plus 2>&1 | tee $LOG_FILE
@@ -119,8 +129,6 @@ pi --no-extensions --no-skills -e '$EXT_PATH' --model alibaba-cn/qwen3.7-plus 2>
 ```
 
 Use this when the test requires a specific provider or model behavior (e.g., testing cacheWrite requires an anthropic-messages provider; testing no-cache behavior can use an openai-compatible provider like opencode-go).
-
----
 
 ## Key Patterns
 
@@ -138,47 +146,51 @@ pi --no-extensions --no-skills -e packages/<pkg>/extensions/<file>.ts
 | `--no-session` | Skip session persistence (test ephemeral) |
 | `--model <id>` | Start with a specific model |
 
-### tmux Session Lifecycle
+### herdr Workspace & Pane Lifecycle
 
 ```text
-Start:   tmux -S <sock> new-session -d -s <name>
-Capture: tmux -S <sock> capture-pane -p -J -t <session> -S -<N>
-Send:    tmux -S <sock> send-keys -t <session> -- "<text>" Enter
-Clean:   tmux -S <sock> kill-session -t <session>
+Create workspace:   herdr workspace create --cwd <path> --label <name> --no-focus
+Run command:        herdr pane run <pane_id> "<command>"
+Send text:          herdr pane send-text <pane_id> "<text>"
+Send key:           herdr pane send-keys <pane_id> Enter
+Read visible:       herdr pane read <pane_id> --source visible --lines <N>
+Wait for output:    herdr wait output <pane_id> --source visible --match <p> [--regex] [--timeout MS]
+Wait for status:    herdr wait agent-status <pane_id> --status idle [--timeout MS]
+Close workspace:    herdr workspace close <workspace_id>
 ```
 
-- Always use `-S <sock>` to isolate from user's tmux sessions
-- Use `-J` for `capture-pane` to join wrapped lines
-- Negative `-S` value shows last N lines (positive shows from line N)
-- When navigating to the enter key of the tmux session, the session window should be referenced with `:` separator, e.g. `-t <session>:0.0`
-- If the pane is not found at `:0.0`, use the correct window index: find with `tmux -S <sock> list-panes -a`
+- Always use `--no-focus` for test workspaces so they don't steal the user's current focus
+- `wait output --source visible` checks the current viewport and returns immediately if the text already exists; otherwise it polls
+- To match text that appears after a message is sent, match on a digit (`[0-9]`) or a specific regex that excludes the empty-state placeholder
+- IDs compact when workspaces close — always parse fresh IDs from `workspace create` output
 
 ### Footer Status Extraction
 
-The extension's status line is at the very bottom of the TUI. Capture the last 5-10 lines and grep for the status key:
+The extension's status line is at the very bottom of the pi TUI. Capture the last few lines and grep for the status key:
 
 ```bash
-tmux -S "$SOCKET" capture-pane -p -J -t "$SESSION" -S -5 2>&1 | grep "^<KEY>"
+herdr pane read "$ROOT_PANE" --source visible --lines 50 | tail -5
 ```
 
-For extensions that register via `ctx.ui.setStatus()`, the key is the first argument to `setStatus`.
+For extensions that register via `ctx.ui.setStatus()`, the key is the first argument to `setStatus`. Grep for it to isolate the footer line: `grep "<status-key>"`.
 
 ### Model Switching
 
 ```bash
-tmux -S "$SOCKET" send-keys -t "$SESSION" -- "/model <model-name>" Enter
+herdr pane run "$ROOT_PANE" "/model <model-name>"
 ```
 
-Wait for the model change to complete (`sleep 3`). After model change, the session resets — the extension should reinitialize and show its initial/empty state.
+After a model change, the session resets — the extension reinitializes and shows its empty/initial state. Use `wait output --source visible --match <empty-pattern>` to confirm readiness before sending the next test message.
 
 ### Slash Command Testing
 
 When testing an extension that registers a `/command`, pi passes the raw argument string to the handler **without stripping quotes**. A user typing `/pna "/path/with spaces/file.md"` delivers `args = '"/path/with spaces/file.md"'` (quotes included).
 
-Test in tmux by sending the exact string the user would type:
+Test in herdr by sending the exact string the user would type:
 
 ```bash
-tmux -S "$SOCKET" send-keys -t "$SESSION" -- "/pna \"/path/with spaces/file.md\"" Enter
+herdr pane send-text "$ROOT_PANE" "/pna \"/path/with spaces/file.md\""
+herdr pane send-keys "$ROOT_PANE" Enter
 ```
 
 If the handler expects unquoted paths, strip quotes defensively: `args.replaceAll(/^"|"$/g, '')`.
@@ -192,46 +204,34 @@ To verify stateful behavior (accumulation, baselines, resets):
 3. **Context change**: Send a different-topic message to verify behavior under context shift
 4. **Model switch**: Verify metrics reset after `/model`
 
----
-
 ## Pitfalls
 
 | Problem | Symptom | Fix |
 |---------|---------|-----|
-| tmux can't find window 0 | `can't find window: 0` | Check pane index: `tmux -S <sock> list-panes -a` then use the correct target like `<session>:1.0` |
-| pi not starting | tmux pane is empty | Remove `2>&1` redirection; pi needs a real TTY which tmux provides |
-| Sleep too short | Output is incomplete | Increase wait time (30s for fast models, 60s+ for slow/reasoning models) |
-| Socket conflict | "address already in use" | Always `kill-session` before `new-session`, or use a unique socket path |
-| Extension not loaded | Footer shows no extension status | Verify `-e` path is absolute; check tmux output for error messages |
-| Model not found | "No matching models" | Use exact model ID from `models.json` or pi's model list; try fuzzy search |
-| Timed out during test | Command hangs or model stops responding | Increase sleep duration; if model consistently times out, switch to a faster model or reduce thinking level. After a timeout, the next `/model` switch resets the session — use this to recover. |
-| Model produces tool calls | Multiple asst msgs per turn (complicates state tracking) | Check branch structure before asserting on state |
-| npm extension conflict | Two version of same extension loaded (npm + local), causing footer/state collision | Uninstall npm version: `pi uninstall @cnife/<pkg>`, or replace npm path with local symlink: `ln -sf \$(pwd)/packages/<pkg>/extensions/<file>.ts \$(find ~/.pi/agent/npm/node_modules -path "*<pkg>*" -name "*.ts" | head -1)` — test完成后务必恢复 |
-
----
+| TUI footer not visible in pane read | `pane read --source recent` returns empty or partial content | Use `--source visible` for full-screen TUI apps like pi. `recent`/`recent-unwrapped` read scrollback history — pi's TUI doesn't produce meaningful scrollback |
+| pane read returns only 1 line | Output is unexpectedly short | Always pass `--lines N`. Without it, `pane read` defaults to **1 line** |
+| send-keys fails on C-d | `unsupported key C-d` error | herdr's `send-keys` doesn't accept control characters like `C-d`. Use `workspace close` for cleanup — it terminates the pane and all running processes cleanly |
+| Slow reasoning model | `wait output` times out mid-message | Increase `--timeout` to 120000ms+ for reasoning models (glm-5.2, deepseek) with high thinking levels. If consistently timing out, switch to a faster model |
+| Extension not loaded | Footer shows no extension status | Verify `-e` path is correct; read visible before pi fully boots to catch errors: `herdr pane read "$ROOT_PANE" --source visible --lines 100` |
+| Model not found | "No matching models" in pi | Use exact model ID from pi's model list (Ctrl+P / `/model` completion); try fuzzy search |
+| Model produces tool calls | Multiple assistant messages per turn (complicates state tracking) | Check branch structure before asserting on state |
+| npm extension conflict | Two versions of same extension (npm + local) cause footer/state collision | Uninstall npm version: `pi uninstall @cnife/<pkg>`, or use `-ne` (included in isolation loading above) to prevent conflict |
+| Workspace ID changes | Reusing a stale workspace ID fails | IDs compact when workspaces close. Always parse fresh IDs from `workspace create` or `workspace list` responses — never hardcode |
 
 ## Log Analysis
 
-The `tee` log file captures all terminal output for post-hoc analysis. The path is `$LOG_FILE` (defaults to `/tmp/pi-e2e-pi-e2e.log`):
+For most tests, `pane read --source visible --lines 200` serves as the log — it dumps the entire visible TUI content including any error messages pi printed during boot.
 
 ```bash
-# Check extension initialization
-grep -i "error\|warn\|exception" $LOG_FILE
+# Dump the full visible screen
+herdr pane read "$ROOT_PANE" --source visible --lines 200
 
-# Check footer status at specific times
-grep "^Cache\|^<status-key>" $LOG_FILE
-
-# Check model usage stats (pi footer line shows ↑input ↓output RcacheRead WcacheWrite)
-grep "↑.*↓" $LOG_FILE
+# Check for errors
+herdr pane read "$ROOT_PANE" --source visible --lines 200 | grep -i "error\|warn\|exception"
 ```
 
----
+If deeper log analysis is needed, start pi with `2>&1 | tee /tmp/pi-e2e.log` inside `pane run` — but note that piping stdout may prevent pi from detecting a TTY, which can affect TUI rendering. Reserve `tee` for cases where raw terminal output is needed.
 
-## Reference: Troubleshooting Topics Moved Here
+## Reference
 
-This skill consolidates the E2E testing methodology that was previously scattered across `docs/troubleshooting.md`. Specifically:
-
-- Extension isolation loading → §Key Patterns
-- tmux interactive testing → §Workflow
-- Config file testing → §Key Patterns (Extension Isolation)
-- Compilation check → §Prerequisites
+This skill replaces the tmux-based E2E testing methodology that was previously documented here. herdr was chosen because its workspace/pane API provides a simpler, more precise workflow for TUI E2E testing: real PTY (no pipe-related rendering issues), agent_status-based readiness detection (no fixed sleeps), and `wait output --source visible` for precise footer matching.

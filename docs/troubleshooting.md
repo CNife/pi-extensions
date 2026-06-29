@@ -63,27 +63,9 @@ ln -sf $(pwd)/packages/<pkg>/extensions/<file>.ts \
 
 测试完成后**务必恢复**，否则后续 `pi update` 会覆盖符号链接。
 
-### tmux 交互式测试
+### E2E 测试
 
-开发 pi 扩展时，在 tmux 中启动 pi 便于发送按键和捕获输出：
-
-```bash
-# 启动
-tmux new-session -d -s pi-test "pi -ne -e ... 2>&1 | tee /tmp/pi-test.log"
-
-# 发送消息
-tmux send-keys -t pi-test "hello world" Enter
-
-# 发送 Ctrl+P（切换模型）
-tmux send-keys -t pi-test C-p
-
-# 捕获输出
-sleep 20
-tmux capture-pane -t pi-test -p | grep "^Cache"
-
-# 清理
-tmux kill-session -t pi-test
-```
+隔离加载扩展 + 发送消息 + 验证 footer 的一站式流程，直接用 `extension-e2e-test` 技能（基于 herdr）。
 
 ### 配置文件测试
 
