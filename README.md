@@ -20,7 +20,7 @@ Refer to [CONTEXT.md](CONTEXT.md) for the project's domain glossary.
 
 | 包 | 最终版本 | 退役日期 | 说明 |
 |---|---------|---------|------|
-| `@cnife/pi-change-based-workflow` | 0.2.1 | 2026-07-11 | 被 rpiv 流水线取代，源码见 [archive/](archive/) |
+| `@cnife/pi-change-based-workflow` | 0.2.1 | 2026-07-11 | 已退役，源码见 [archive/](archive/) |
 | `@cnife/pi-obsidian-diary` | 0.1.1 | 2026-07-11 | 不再维护（skill 仍独立维护），源码见 [archive/](archive/) |
 | `@cnife/pi-simple-plannotator` | 0.1.6 | 2026-07-11 | 改用 `@plannotator/pi-extension`，源码见 [archive/](archive/) |
 

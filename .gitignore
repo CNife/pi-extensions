@@ -3,9 +3,3 @@ node_modules/
 .worktrees/
 __pycache__/
 *.pyc
-
-# rpiv workflow 运行日志（产物已归档至 artifacts/）
-.rpiv/workflows/runs/
-
-# handoff 文档（会话间上下文传递，不纳入仓库）
-.rpiv/artifacts/handoffs/
