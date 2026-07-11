@@ -1,5 +1,7 @@
 # @cnife/pi-change-based-workflow
 
+> ⚠️ Deprecated, no longer maintained.
+
 基于变更的开发工作流技能集，提供从想法到代码的完整流水线。
 
 ## 包含技能

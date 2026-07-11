@@ -1,11 +1,11 @@
 {
   "name": "@cnife/pi-simple-plannotator",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "private": false,
   "keywords": [
     "pi-package"
   ],
-  "description": "Browser-based code review and markdown annotation for pi",
+  "description": "[Deprecated] Browser-based code review and markdown annotation for pi",
   "homepage": "https://github.com/CNife/pi-extensions#readme",
   "bugs": {
     "url": "https://github.com/CNife/pi-extensions/issues"

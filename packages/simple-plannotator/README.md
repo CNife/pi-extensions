@@ -1,5 +1,7 @@
 # @cnife/pi-simple-plannotator
 
+> ⚠️ Deprecated. Use @plannotator/pi-extension instead.
+
 基于浏览器的代码审查和 Markdown 标注工具，集成 [Plannotator](https://github.com/plannotator/plannotator)。
 
 ## 功能
