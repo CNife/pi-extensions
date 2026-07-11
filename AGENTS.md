@@ -24,11 +24,7 @@ pi-extensions/
 │   ├── auto-naming-session/               # @cnife/pi-auto-naming-session
 │   ├── cache-hit-rate/                    # @cnife/pi-cache-hit-rate
 │   ├── execute-python/                    # @cnife/pi-execute-python
-│   ├── simple-plannotator/                # @cnife/pi-simple-plannotator
-│   ├── miscs/                             # @cnife/pi-miscs
-│   └── change-based-workflow/             # @cnife/pi-change-based-workflow
-│       └── skills/
-│           └── AGENTS.md                  # 技能开发规范
+│   └── miscs/                             # @cnife/pi-miscs
 ├── archive/                               # 已归档代码
 ├── changes/                               # (旧流程遗留) 历史变更记录
 └── docs/
