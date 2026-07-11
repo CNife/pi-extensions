@@ -9,8 +9,11 @@ Refer to [CONTEXT.md](CONTEXT.md) for the project's domain glossary.
 
 | 包 | 类型 | 说明 |
 |---|------|------|
-| [`@cnife/pi-execute-python`](#execute-python) | Extension | 用 uv 执行 Python，实时流式输出，自动依赖管理 |
+| [`@cnife/pi-agent-loop-reflection`](#agent-loop-reflection) | Extension | 长时 agent loop 自动插入反思提醒 |
+| [`@cnife/pi-auto-naming-session`](#auto-naming-session) | Extension | turn 边界自动生成/刷新会话标题 |
 | [`@cnife/pi-cache-hit-rate`](#cache-hit-rate) | Extension | 在 footer 中显示当前会话累计缓存命中率 |
+| [`@cnife/pi-execute-python`](#execute-python) | Extension | 用 uv 执行 Python，实时流式输出，自动依赖管理 |
+| [`@cnife/pi-inference-speed`](#inference-speed) | Extension | footer 显示推理速度 TPS 和首 token 延迟 TTFT |
 | [`@cnife/pi-miscs`](#miscs) | Extension | 调试 & 快捷退出等小工具 |
 
 ### Deprecated packages
@@ -32,8 +35,11 @@ pi install git:github.com/CNife/pi-extensions
 单独安装某个包：
 
 ```bash
-pi install npm:@cnife/pi-execute-python
+pi install npm:@cnife/pi-agent-loop-reflection
+pi install npm:@cnife/pi-auto-naming-session
 pi install npm:@cnife/pi-cache-hit-rate
+pi install npm:@cnife/pi-execute-python
+pi install npm:@cnife/pi-inference-speed
 pi install npm:@cnife/pi-miscs
 ```
 
@@ -58,6 +64,18 @@ pi install npm:@cnife/pi-miscs
 - 文案格式：`Cached 99.99%`
 - 统计口径：`cacheRead / (input + cacheRead + cacheWrite)`
 - 颜色阈值：`<75%` 红，`75%-85%` 黄，`85%-95%` 默认前景色，`>=95%` 绿
+
+### agent-loop-reflection
+
+在长时间运行的 agent loop 中自动插入反思提醒：默认每 10 个有效 turn 触发，要求模型暂停确认目标、证据和阻塞状态，必要时调用 `advisor`；用 `steer` 作为可见用户消息插入，反思 turn 不计入下次倒计时，用户消息会重置倒计时。
+
+### auto-naming-session
+
+在 turn 边界自动生成并刷新会话标题。
+
+### inference-speed
+
+在 pi footer 显示当前 assistant message 的推理速度（TPS = output tokens / 生成耗时）和首 token 延迟（TTFT）。格式 `12.3T/s FT1.2s`，无数据时 dim 色占位，每条 message 结束后刷新。
 
 ### miscs
 
