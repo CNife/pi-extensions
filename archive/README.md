@@ -1,0 +1,15 @@
+# Archive
+
+已退役的包，保留源码供历史查阅。不再维护、不再发布。
+
+| 包 | 最终版本 | 退役日期 | 说明 |
+|---|---------|---------|------|
+| `@cnife/pi-change-based-workflow` | 0.2.1 | 2026-07-11 | 被 rpiv 流水线取代 |
+| `@cnife/pi-obsidian-diary` | 0.1.1 | 2026-07-11 | 不再维护（skill 仍独立维护） |
+| `@cnife/pi-simple-plannotator` | 0.1.6 | 2026-07-11 | 改用 `@plannotator/pi-extension` |
+
+退役对应的 git tag：`retired-packages-2026-07-11`。
+
+---
+
+`sh-guard.ts` 为早期归档的单文件扩展。

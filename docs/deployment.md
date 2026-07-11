@@ -5,7 +5,6 @@
 ```bash
 pi install npm:@cnife/pi-cache-hit-rate
 pi install npm:@cnife/pi-execute-python
-pi install npm:@cnife/pi-change-based-workflow
 # ...
 ```
 
