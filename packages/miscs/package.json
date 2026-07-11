@@ -5,7 +5,7 @@
   "keywords": [
     "pi-package"
   ],
-  "description": "Miscellaneous small pi extensions and skills (debug, exit, measure-tokens)",
+  "description": "Miscellaneous small pi extensions (debug, exit)",
   "homepage": "https://github.com/CNife/pi-extensions#readme",
   "bugs": {
     "url": "https://github.com/CNife/pi-extensions/issues"
@@ -23,9 +23,6 @@
   "pi": {
     "extensions": [
       "./extensions"
-    ],
-    "skills": [
-      "./skills"
     ]
   },
   "peerDependencies": {
