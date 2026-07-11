@@ -1,5 +1,7 @@
 # @cnife/pi-obsidian-diary
 
+> ⚠️ Deprecated, no longer maintained.
+
 将当前 pi 会话总结为 Obsidian 日记草稿，并通过 `sendUserMessage` 发给主 Agent，由主 Agent 在用户确认后写入日记文件。
 
 ## 功能

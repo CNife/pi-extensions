@@ -1,11 +1,11 @@
 {
   "name": "@cnife/pi-obsidian-diary",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": false,
   "keywords": [
     "pi-package"
   ],
-  "description": "Summarize the current session into an Obsidian diary entry",
+  "description": "[Deprecated] Summarize the current session into an Obsidian diary entry",
   "homepage": "https://github.com/CNife/pi-extensions#readme",
   "bugs": {
     "url": "https://github.com/CNife/pi-extensions/issues"
