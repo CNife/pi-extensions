@@ -36,6 +36,8 @@ interface ExecutePythonResult {
   execCount: number;
   restarted: boolean;
   restartReason?: string;
+  /** Requirement strings newly added to the accumulated set S (P \ S). */
+  addedPackages: string[];
 }
 
 interface ExecutePythonRenderState {
@@ -58,10 +60,17 @@ function formatDuration(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
-function buildRestartNotice(reason: string): string {
+function buildRestartNotice(
+  reason: string,
+  addedPackages: string[] = [],
+): string {
   switch (reason) {
-    case "packages":
-      return "内核已重启：新增依赖，内存状态已重置。";
+    case "packages": {
+      const added = addedPackages.length > 0 ? addedPackages.join(", ") : "";
+      return added
+        ? `内核已重启：新增依赖 ${added}，内存状态已重置。`
+        : "内核已重启：依赖变更，内存状态已重置。";
+    }
     case "pythonVersion":
       return "内核已重启：Python 版本切换，内存状态已重置。";
     case "pythonExecutable":
@@ -164,6 +173,7 @@ const executePythonTool = defineTool({
           displays: [],
           execCount: 0,
           restarted: false,
+          addedPackages: [],
         } as ExecutePythonResult,
       };
     }
@@ -200,6 +210,7 @@ const executePythonTool = defineTool({
           displays: [],
           execCount: 0,
           restarted: false,
+          addedPackages: [],
         } as ExecutePythonResult,
       });
     };
@@ -247,7 +258,10 @@ const executePythonTool = defineTool({
 
       // Restart notice
       if (result.restarted && result.restartReason) {
-        const notice = buildRestartNotice(result.restartReason);
+        const notice = buildRestartNotice(
+          result.restartReason,
+          result.addedPackages,
+        );
         if (notice) contentParts.push(notice);
       }
 
@@ -290,6 +304,7 @@ const executePythonTool = defineTool({
         execCount: result.execCount,
         restarted: result.restarted,
         restartReason: result.restartReason,
+        addedPackages: result.addedPackages,
       };
 
       return {
@@ -302,7 +317,8 @@ const executePythonTool = defineTool({
         details,
       };
     } catch (error) {
-      // Kernel startup failure or other unexpected error
+      // Kernel busy/shutting-down rejection or other unexpected error.
+      // (Startup failures are returned as error results by the kernel, not thrown.)
       if (updateTimer) {
         clearTimeout(updateTimer);
         updateTimer = undefined;
@@ -330,6 +346,7 @@ const executePythonTool = defineTool({
           displays: [],
           execCount: 0,
           restarted: false,
+          addedPackages: [],
         } as ExecutePythonResult,
       };
     }
@@ -393,7 +410,10 @@ const executePythonTool = defineTool({
 
     // Restart notice
     if (details?.restarted && details.restartReason) {
-      const notice = buildRestartNotice(details.restartReason);
+      const notice = buildRestartNotice(
+        details.restartReason,
+        details.addedPackages,
+      );
       if (notice) {
         text += `${theme.fg("warning", notice)}\n`;
       }

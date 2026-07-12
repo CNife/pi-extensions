@@ -507,3 +507,166 @@ test("execCount resets to 1 after kernel crash and restart", async () => {
   strictEqual(afterResult.restartReason, "crash");
   await kernel.shutdown();
 });
+test("accumulation model: A then B restarts with S=A∪B, both imports work", async () => {
+  const kernel = new PythonKernel({ cwd: process.cwd() });
+  // Start with typing-extensions
+  const r1 = await cell(kernel, "import typing_extensions; print('A')", {
+    packages: ["typing-extensions"],
+  });
+  strictEqual(r1.exitCode, 0);
+  ok(!r1.restarted, "first call is not a restart");
+  strictEqual(r1.addedPackages.length, 0, "first start has no addedPackages");
+
+  // Add requests (P⊄S) -> restart with S={typing-extensions, requests}
+  const r2 = await cell(kernel, "import requests; print('B')", {
+    packages: ["requests"],
+  });
+  ok(r2.restarted, "new package should trigger restart");
+  strictEqual(r2.restartReason, "packages");
+  ok(
+    r2.addedPackages.includes("requests"),
+    "addedPackages should contain requests",
+  );
+  strictEqual(r2.exitCode, 0);
+
+  // Now S={typing-extensions, requests}. Call with typing-extensions (P⊆S) -> no restart
+  const r3 = await cell(kernel, "import typing_extensions; print('reuse')", {
+    packages: ["typing-extensions"],
+  });
+  ok(!r3.restarted, "subset P⊆S should not restart");
+  strictEqual(r3.addedPackages.length, 0, "no restart means no addedPackages");
+  strictEqual(r3.exitCode, 0);
+  ok(r3.stdout.includes("reuse"));
+
+  // requests still importable (S accumulated it)
+  const r4 = await cell(kernel, "import requests; print('still there')", {
+    packages: ["requests"],
+  });
+  ok(!r4.restarted, "requests is in S, no restart");
+  strictEqual(r4.exitCode, 0);
+  await kernel.shutdown();
+});
+
+test("accumulation model: subset P⊆S reuses kernel, state preserved", async () => {
+  const kernel = new PythonKernel({ cwd: process.cwd() });
+  // S = {typing-extensions, requests}
+  await cell(kernel, "keeper = 42", {
+    packages: ["typing-extensions", "requests"],
+  });
+
+  // P = {typing-extensions} ⊆ S -> reuse, state preserved
+  const r2 = await cell(kernel, "print(keeper)", {
+    packages: ["typing-extensions"],
+  });
+  ok(!r2.restarted, "subset should not restart");
+  strictEqual(r2.stdout.trim(), "42");
+  strictEqual(r2.addedPackages.length, 0);
+  await kernel.shutdown();
+});
+
+test("accumulation model: empty packages P⊆S reuses kernel", async () => {
+  const kernel = new PythonKernel({ cwd: process.cwd() });
+  await cell(kernel, "val = 'survive'", { packages: ["typing-extensions"] });
+
+  // P = {} ⊆ S -> reuse, state preserved
+  const r2 = await cell(kernel, "print(val)");
+  ok(!r2.restarted, "empty packages should not restart");
+  strictEqual(r2.stdout.trim(), "survive");
+  await kernel.shutdown();
+});
+
+test("startup failure returns error result, S preserved for recovery", async () => {
+  const kernel = new PythonKernel({ cwd: process.cwd() });
+  // Start a healthy kernel with a real package
+  const r1 = await cell(kernel, "import typing_extensions; print('ok')", {
+    packages: ["typing-extensions"],
+  });
+  strictEqual(r1.exitCode, 0);
+
+  // Request a version conflict: requests<3 + requests>=4 cannot resolve.
+  // This triggers a package restart (P⊄S) that fails at startup.
+  const r2 = await cell(kernel, "print('unreachable')", {
+    packages: ["requests<3", "requests>=4"],
+  });
+  // Must return an error result, NOT throw.
+  ok(r2.error, "version conflict should produce error");
+  strictEqual(r2.error?.name, "StartupError");
+  strictEqual(r2.exitCode, 1);
+  ok(r2.kernelKilled, "startup failure should set kernelKilled");
+  ok(!r2.restarted, "failed startup should not report restarted");
+
+  // S is preserved: typing-extensions should still be available on next call.
+  // The kernel is crashed, so this call triggers crash recovery with S.
+  const r3 = await cell(
+    kernel,
+    "import typing_extensions; print('recovered')",
+    {
+      packages: ["typing-extensions"],
+    },
+  );
+  ok(r3.restarted, "crash recovery should restart");
+  strictEqual(r3.restartReason, "crash");
+  strictEqual(r3.exitCode, 0);
+  ok(r3.stdout.includes("recovered"));
+  await kernel.shutdown();
+});
+
+test("reset clears accumulated S: old package no longer available", async () => {
+  const kernel = new PythonKernel({ cwd: process.cwd() });
+  // Accumulate typing-extensions into S
+  await cell(kernel, "import typing_extensions; print('acc')", {
+    packages: ["typing-extensions"],
+  });
+
+  // Reset with no packages -> S = {}, old package gone
+  const r2 = await cell(kernel, "print('fresh')", { reset: true });
+  ok(r2.restarted, "reset should report restarted");
+  strictEqual(r2.restartReason, "reset");
+  strictEqual(r2.exitCode, 0);
+  strictEqual(r2.addedPackages.length, 0, "reset has no addedPackages");
+
+  // After reset, typing-extensions should not be importable (S was cleared)
+  const r3 = await cell(kernel, "import typing_extensions", {
+    packages: ["typing-extensions"],
+  });
+  // Now P={typing-extensions} ⊄ S={} -> restart to add it back
+  ok(r3.restarted, "should restart to re-add package after reset cleared S");
+  strictEqual(r3.restartReason, "packages");
+  ok(r3.addedPackages.includes("typing-extensions"));
+  strictEqual(r3.exitCode, 0);
+  await kernel.shutdown();
+});
+
+test("reset then execute: code runs in fresh kernel, result returned", async () => {
+  const kernel = new PythonKernel({ cwd: process.cwd() });
+  await cell(kernel, "x = 'before reset'");
+
+  // Reset then execute: x is gone, new code runs
+  const r2 = await cell(kernel, "print('hello after reset')", { reset: true });
+  ok(r2.restarted);
+  strictEqual(r2.restartReason, "reset");
+  strictEqual(r2.exitCode, 0);
+  ok(r2.stdout.includes("hello after reset"));
+
+  // x should be NameError (state was reset)
+  const r3 = await cell(kernel, "print(x)");
+  ok(r3.error);
+  ok(r3.error?.name === "NameError");
+  await kernel.shutdown();
+});
+
+test("package restart reports addedPackages in result", async () => {
+  const kernel = new PythonKernel({ cwd: process.cwd() });
+  await cell(kernel, "print('start')", { packages: ["typing-extensions"] });
+
+  // Add two new packages
+  const r2 = await cell(kernel, "print('more')", {
+    packages: ["requests", "parsy"],
+  });
+  ok(r2.restarted);
+  strictEqual(r2.restartReason, "packages");
+  // addedPackages should contain both new requirements
+  ok(r2.addedPackages.includes("requests"));
+  ok(r2.addedPackages.includes("parsy"));
+  await kernel.shutdown();
+});

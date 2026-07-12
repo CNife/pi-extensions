@@ -16,9 +16,18 @@
  * Single execution - overlapping execute() calls are rejected, never queued.
  * State machine is NOT exposed externally.
  *
- * Fingerprint: {packages, pythonVersion, pythonExecutable}. Naive replacement
- * semantics: any change in the fingerprint triggers a kernel restart with the
- * new values. Accumulation model (S ∪ P) is deferred to a later slice.
+ * Fingerprint: {packages, pythonVersion, pythonExecutable}. Accumulation
+ * model (decision A, #43): each kernel instance owns an accumulated
+ * requirement-string set S. A call with packages P: if P⊆S reuse the kernel
+ * (state preserved); if P⊄S restart with S∪P (state lost). Only a successful
+ * startup commits the new S. reset:true starts a fresh kernel, discards S
+ * entirely, and sets S = P (empty if omitted). reset is the ONLY way to
+ * shrink S.
+ *
+ * Startup failure (e.g. uv version conflict) returns an error result instead
+ * of throwing: exitCode:1, error.name:"StartupError", kernelKilled:true,
+ * restarted:false. The kernel enters "crashed" and S keeps its old value for
+ * the next call to recover from.
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
@@ -67,6 +76,8 @@ export interface KernelExecuteResult {
   execCount: number;
   restarted: boolean;
   restartReason?: RestartReason;
+  /** Requirement strings newly added to S by this call (P \ S). Empty unless a package-triggered restart occurred. */
+  addedPackages: string[];
 }
 
 export interface KernelShutdownResult {
@@ -149,29 +160,53 @@ function normalizePackages(packages: string[] | undefined): string[] {
   return result;
 }
 
-/** Compare two fingerprints for equality. */
-function fingerprintsEqual(
-  a: KernelFingerprint,
-  b: KernelFingerprint,
-): boolean {
-  if (a.pythonVersion !== b.pythonVersion) return false;
-  if (a.pythonExecutable !== b.pythonExecutable) return false;
-  if (a.packages.length !== b.packages.length) return false;
-  const aSet = new Set(a.packages);
-  for (const p of b.packages) {
-    if (!aSet.has(p)) return false;
+/**
+ * Whether every requirement string in `subset` is present in `superset`.
+ * Used for the accumulation model: P⊆S means the kernel can be reused.
+ */
+function isPackagesSubset(subset: string[], superset: string[]): boolean {
+  const superSet = new Set(superset);
+  for (const p of subset) {
+    if (!superSet.has(p)) return false;
   }
   return true;
 }
 
-/** Determine which fingerprint dimension changed (or null if identical). */
+/** Merge two package arrays into a deduplicated union (S ∪ P). */
+function unionPackages(a: string[], b: string[]): string[] {
+  const seen = new Set(a);
+  const result = [...a];
+  for (const p of b) {
+    if (!seen.has(p)) {
+      seen.add(p);
+      result.push(p);
+    }
+  }
+  return result;
+}
+
+/** Requirement strings in P that are absent from S (the "added" set). */
+function addedPackagesOf(packages: string[], accumulated: string[]): string[] {
+  const accSet = new Set(accumulated);
+  return packages.filter((p) => !accSet.has(p));
+}
+
+/**
+ * Determine restart reason under the accumulation model.
+ * - pythonVersion / pythonExecutable changes always win (they require a
+ *   different interpreter).
+ * - packages: restart only when P⊄S (new requirement strings appear). When
+ *   P⊆S the kernel is reused and state is preserved.
+ * Returns null when the kernel can be reused as-is.
+ */
 function fingerprintChangeReason(
   old: KernelFingerprint,
-  next: KernelFingerprint,
+  requested: KernelFingerprint,
 ): RestartReason | null {
-  if (old.pythonVersion !== next.pythonVersion) return "pythonVersion";
-  if (old.pythonExecutable !== next.pythonExecutable) return "pythonExecutable";
-  if (!fingerprintsEqual(old, next)) return "packages";
+  if (old.pythonVersion !== requested.pythonVersion) return "pythonVersion";
+  if (old.pythonExecutable !== requested.pythonExecutable)
+    return "pythonExecutable";
+  if (!isPackagesSubset(requested.packages, old.packages)) return "packages";
   return null;
 }
 
@@ -200,6 +235,7 @@ export class PythonKernel {
   /** Set on each execute(); consumed by #doExecute into the result. */
   #lastRestarted = false;
   #lastRestartReason: RestartReason | undefined = undefined;
+  #lastAddedPackages: string[] = [];
 
   constructor(options: KernelConstructorOptions) {
     this.#cwd = options.cwd;
@@ -216,13 +252,16 @@ export class PythonKernel {
    * Execute code in the persistent kernel. One method handles everything:
    * check fingerprint changes, decide restart, execute.
    *
-   * Naive replacement semantics: if packages/pythonVersion/pythonExecutable
-   * differ from the current kernel, restart with the new values. If reset is
-   * true, restart with a fresh fingerprint.
+   * Accumulation model: each kernel instance owns a requirement-string set S.
+   * A call with packages P: if P⊆S reuse (state preserved); if P⊄S restart
+   * with S∪P (state lost). Only a successful startup commits the new S.
+   * reset:true discards S and sets S = P. Startup failure returns an error
+   * result (StartupError) instead of throwing; S keeps its old value.
    */
   async execute(options: KernelExecuteOptions): Promise<KernelExecuteResult> {
+    const requestedPackages = normalizePackages(options.packages);
     const requestedFingerprint: KernelFingerprint = {
-      packages: normalizePackages(options.packages),
+      packages: requestedPackages,
       pythonVersion: options.pythonVersion,
       pythonExecutable: options.pythonExecutable,
     };
@@ -230,20 +269,53 @@ export class PythonKernel {
     // Reset tracking for this call.
     this.#lastRestarted = false;
     this.#lastRestartReason = undefined;
+    this.#lastAddedPackages = [];
 
     if (this.isAlive()) {
-      // Kernel is alive - check if restart is needed.
-      let reason: RestartReason | null = null;
       if (options.reset) {
-        reason = "reset";
+        // reset:true - discard S, start fresh with S = P.
+        this.#lastAddedPackages = [];
+        const startErr = await this.#restartWithFingerprint(
+          requestedFingerprint,
+          "reset",
+        );
+        if (startErr) return startErr;
       } else {
-        reason = fingerprintChangeReason(
+        const reason = fingerprintChangeReason(
           this.#fingerprint,
           requestedFingerprint,
         );
-      }
-      if (reason !== null) {
-        await this.#restart(requestedFingerprint, reason);
+        if (reason === "packages") {
+          // P⊄S: restart with S∪P, record newly added requirement strings.
+          const added = addedPackagesOf(
+            requestedPackages,
+            this.#fingerprint.packages,
+          );
+          this.#lastAddedPackages = added;
+          const merged: KernelFingerprint = {
+            packages: unionPackages(
+              this.#fingerprint.packages,
+              requestedPackages,
+            ),
+            pythonVersion: this.#fingerprint.pythonVersion,
+            pythonExecutable: this.#fingerprint.pythonExecutable,
+          };
+          const startErr = await this.#restartWithFingerprint(
+            merged,
+            "packages",
+          );
+          if (startErr) return startErr;
+        } else if (reason !== null) {
+          // pythonVersion / pythonExecutable change - restart, S loses packages
+          // (different interpreter). Use requested fingerprint directly.
+          this.#lastAddedPackages = [];
+          const startErr = await this.#restartWithFingerprint(
+            requestedFingerprint,
+            reason,
+          );
+          if (startErr) return startErr;
+        }
+        // reason === null: P⊆S, reuse kernel, state preserved.
       }
     } else {
       // Kernel not alive - need to start.
@@ -258,34 +330,65 @@ export class PythonKernel {
       // stopped or crashed.
       const hadPreviousKernel =
         this.#proc !== null || this.#status === "crashed";
-      const fingerprintChanged =
-        hadPreviousKernel &&
-        !fingerprintsEqual(this.#fingerprint, requestedFingerprint);
 
       if (options.reset) {
-        // Reset: start fresh with requested fingerprint.
-        this.#fingerprint = requestedFingerprint;
-        await this.#startFresh(requestedFingerprint);
-        this.#lastRestarted = true;
-        this.#lastRestartReason = "reset";
-      } else if (fingerprintChanged) {
-        // Fingerprint changed since last kernel.
+        // Reset: start fresh with S = P (discards any previous S).
+        this.#lastAddedPackages = [];
+        const startErr = await this.#restartWithFingerprint(
+          requestedFingerprint,
+          "reset",
+        );
+        if (startErr) return startErr;
+      } else if (hadPreviousKernel) {
         const reason = fingerprintChangeReason(
           this.#fingerprint,
           requestedFingerprint,
         );
-        if (reason) {
-          await this.#restart(requestedFingerprint, reason);
+        if (reason === "packages") {
+          // P⊄S after a crash: restart with S∪P.
+          const added = addedPackagesOf(
+            requestedPackages,
+            this.#fingerprint.packages,
+          );
+          this.#lastAddedPackages = added;
+          const merged: KernelFingerprint = {
+            packages: unionPackages(
+              this.#fingerprint.packages,
+              requestedPackages,
+            ),
+            pythonVersion: this.#fingerprint.pythonVersion,
+            pythonExecutable: this.#fingerprint.pythonExecutable,
+          };
+          // Crash recovery + new packages: crash reason takes precedence
+          // (the old kernel is gone, this is effectively a crash restart
+          // that also picks up the new packages).
+          const startErr = await this.#restartWithFingerprint(merged, "crash");
+          if (startErr) return startErr;
+        } else if (reason !== null) {
+          // pythonVersion / pythonExecutable changed: restart with requested.
+          this.#lastAddedPackages = [];
+          const startErr = await this.#restartWithFingerprint(
+            requestedFingerprint,
+            reason,
+          );
+          if (startErr) return startErr;
+        } else {
+          // P⊆S and same interpreter: crash recovery, restart with current S.
+          this.#lastAddedPackages = [];
+          const startErr = await this.#restartWithFingerprint(
+            this.#fingerprint,
+            "crash",
+          );
+          if (startErr) return startErr;
         }
-      } else if (hadPreviousKernel) {
-        // Same fingerprint, crash recovery: restart, state lost.
-        this.#lastRestarted = true;
-        this.#lastRestartReason = "crash";
-        await this.#startFresh(this.#fingerprint);
       } else {
-        // First-ever start: use requested fingerprint.
-        this.#fingerprint = requestedFingerprint;
-        await this.#startFresh(requestedFingerprint);
+        // First-ever start: S = P.
+        this.#lastAddedPackages = [];
+        const startErr = await this.#restartWithFingerprint(
+          requestedFingerprint,
+          undefined,
+        );
+        if (startErr) return startErr;
       }
     }
 
@@ -354,17 +457,33 @@ export class PythonKernel {
   // Private: startup / restart
   // --------------------------------------------------------------------------
 
-  async #restart(
+  /**
+   * Kill the current kernel (if alive) and start a fresh one with the given
+   * fingerprint. On success, commits the new fingerprint to #fingerprint and
+   * records the restart. On startup failure, #fingerprint is LEFT UNCHANGED
+   * (the old S survives for the next call) and an error result is returned.
+   *
+   * `reason` undefined means first-ever start (no restart reported).
+   */
+  async #restartWithFingerprint(
     nextFingerprint: KernelFingerprint,
-    reason: RestartReason,
-  ): Promise<void> {
+    reason: RestartReason | undefined,
+  ): Promise<KernelExecuteResult | null> {
     if (this.isAlive() || this.#status === "starting") {
       await this.#killCurrent();
     }
+    const startErr = await this.#startFresh(nextFingerprint);
+    if (startErr) {
+      // Startup failed: do NOT commit nextFingerprint. #fingerprint keeps
+      // its old value so the next call can recover.
+      return startErr;
+    }
     this.#fingerprint = nextFingerprint;
-    await this.#startFresh(nextFingerprint);
-    this.#lastRestarted = true;
-    this.#lastRestartReason = reason;
+    if (reason !== undefined) {
+      this.#lastRestarted = true;
+      this.#lastRestartReason = reason;
+    }
+    return null;
   }
 
   async #killCurrent(): Promise<void> {
@@ -395,7 +514,15 @@ export class PythonKernel {
     this.#status = "stopped";
   }
 
-  async #startFresh(fingerprint: KernelFingerprint): Promise<void> {
+  /**
+   * Spawn a fresh kernel process and wait for its "ready" frame. Returns null
+   * on success, or a StartupError KernelExecuteResult on failure (timeout,
+   * early exit, spawn error). On failure the kernel enters "crashed" and
+   * #proc is cleared; #fingerprint is NOT modified (caller decides).
+   */
+  async #startFresh(
+    fingerprint: KernelFingerprint,
+  ): Promise<KernelExecuteResult | null> {
     this.#proc = null;
     this.#readBuffer = "";
     this.#onReady = null;
@@ -470,11 +597,36 @@ export class PythonKernel {
     try {
       await ready;
     } catch (err) {
+      // Startup failed: enter crashed, clear proc, return error result.
+      // #fingerprint is intentionally NOT modified here.
       this.#status = "crashed";
       this.#proc = null;
-      throw err;
+      const msg = err instanceof Error ? err.message : String(err);
+      return this.#buildStartupError(msg);
     }
     this.#status = "idle";
+    return null;
+  }
+
+  /** Build a StartupError result for failed kernel startups. */
+  #buildStartupError(message: string): KernelExecuteResult {
+    return {
+      exitCode: 1,
+      cancelled: false,
+      timedOut: false,
+      kernelKilled: true,
+      error: {
+        name: "StartupError",
+        value: message,
+        traceback: "",
+      },
+      stdout: "",
+      stderr: message,
+      displays: [],
+      execCount: 0,
+      restarted: false,
+      addedPackages: [],
+    };
   }
 
   // --------------------------------------------------------------------------
@@ -643,6 +795,7 @@ export class PythonKernel {
       execCount: pending.execCount,
       restarted: this.#lastRestarted,
       restartReason: this.#lastRestartReason,
+      addedPackages: this.#lastAddedPackages,
     };
   }
 
