@@ -66,4 +66,5 @@ Three-level validation: file I/O → JSON parse → type check. Missing file aut
 - **Event-driven** over command-driven when possible
 - **Chinese commit messages**, no conventional commit prefixes
 - **Double quotes, 2-space indent** (Biome enforced)
+- **Version bumps**: 更新 `package.json` 版本号时，必须同时更新 `package-lock.json`（`npm install` 会自动同步）
 - **Local testing**: `pi -ne -ns -e packages/<pkg>/extensions/<file>.ts`
