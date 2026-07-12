@@ -30,6 +30,7 @@ never outlives its host as an orphan.
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import signal
@@ -124,6 +125,32 @@ def _start_parent_watchdog() -> None:
 
 
 # --- Cell execution. -----------------------------------------------------
+def _compile_cell(code: str):
+    """Split cell source into (exec_code, eval_expr) via AST.
+
+    If the last top-level statement is an expression, compile the preceding
+    statements as exec and the trailing expression as eval so its value can
+    be auto-displayed. Otherwise compile everything as exec and return a
+    None eval expression (no auto-display).
+
+    Returns (code_object | None, code_object | None). An empty cell yields
+    (None, None).
+    """
+    mod = ast.parse(code, "<cell>", "exec")
+    if not mod.body:
+        return None, None
+    last = mod.body[-1]
+    if isinstance(last, ast.Expr):
+        if len(mod.body) > 1:
+            exec_mod = ast.Module(body=mod.body[:-1], type_ignores=[])
+            exec_code = compile(exec_mod, "<cell>", "exec")
+        else:
+            exec_code = None
+        eval_code = compile(ast.Expression(body=last.value), "<cell>", "eval")
+        return exec_code, eval_code
+    return compile(mod, "<cell>", "exec"), None
+
+
 def _run_cell(rid: str, code: str) -> None:
     global _exec_count, _CURRENT_RID
     _exec_count += 1
@@ -135,7 +162,13 @@ def _run_cell(rid: str, code: str) -> None:
     exit_code = 0
     error = None
     try:
-        exec(compile(code, "<cell>", "exec"), _NS)
+        _exec_code, _eval_expr = _compile_cell(code)
+        if _exec_code is not None:
+            exec(_exec_code, _NS)
+        if _eval_expr is not None:
+            _eval_value = eval(_eval_expr, _NS)
+            if _eval_value is not None:
+                display(_eval_value)
     except KeyboardInterrupt:
         # SIGINT during exec -> settle as cancelled, kernel stays alive.
         cancelled = True

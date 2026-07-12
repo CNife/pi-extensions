@@ -416,3 +416,94 @@ test("parent watchdog: kernel self-terminates when parent process exits", async 
   ok(result.confirmed, "shutdown confirmed");
   ok(!kernel.isAlive());
 });
+
+test("auto-display: trailing expression 1 + 2 -> displays contains '3'", async () => {
+  const kernel = new PythonKernel({ cwd: process.cwd() });
+  const result = await cell(kernel, "1 + 2");
+  strictEqual(result.exitCode, 0);
+  strictEqual(result.displays.length, 1);
+  strictEqual(result.displays[0], "3");
+  await kernel.shutdown();
+});
+
+test("auto-display: trailing expression with preceding statements", async () => {
+  const kernel = new PythonKernel({ cwd: process.cwd() });
+  const result = await cell(kernel, "x = 10\ny = 20\nx + y");
+  strictEqual(result.exitCode, 0);
+  strictEqual(result.displays.length, 1);
+  strictEqual(result.displays[0], "30");
+  await kernel.shutdown();
+});
+
+test("auto-display: trailing method call shows repr", async () => {
+  const kernel = new PythonKernel({ cwd: process.cwd() });
+  const result = await cell(kernel, "d = {'a': 1, 'b': 2}\nd.keys()");
+  strictEqual(result.exitCode, 0);
+  strictEqual(result.displays.length, 1);
+  strictEqual(result.displays[0], "dict_keys(['a', 'b'])");
+  await kernel.shutdown();
+});
+
+test("no auto-display: assignment last line -> displays empty", async () => {
+  const kernel = new PythonKernel({ cwd: process.cwd() });
+  const result = await cell(kernel, "x = 42");
+  strictEqual(result.exitCode, 0);
+  strictEqual(result.displays.length, 0);
+  await kernel.shutdown();
+});
+
+test("no auto-display: import last line -> displays empty", async () => {
+  const kernel = new PythonKernel({ cwd: process.cwd() });
+  const result = await cell(kernel, "import math");
+  strictEqual(result.exitCode, 0);
+  strictEqual(result.displays.length, 0);
+  await kernel.shutdown();
+});
+
+test("no auto-display: None-valued trailing expression -> displays empty", async () => {
+  const kernel = new PythonKernel({ cwd: process.cwd() });
+  const result = await cell(kernel, "x = 1\nNone");
+  strictEqual(result.exitCode, 0);
+  strictEqual(result.displays.length, 0);
+  await kernel.shutdown();
+});
+
+test("display() called multiple times -> all in displays", async () => {
+  const kernel = new PythonKernel({ cwd: process.cwd() });
+  const result = await cell(kernel, "display(1)\ndisplay(2)\ndisplay(3)");
+  strictEqual(result.exitCode, 0);
+  strictEqual(result.displays.length, 3);
+  strictEqual(result.displays[0], "1");
+  strictEqual(result.displays[1], "2");
+  strictEqual(result.displays[2], "3");
+  await kernel.shutdown();
+});
+
+test("auto-display and manual display() coexist", async () => {
+  const kernel = new PythonKernel({ cwd: process.cwd() });
+  const result = await cell(kernel, "display('manual')\n99");
+  strictEqual(result.exitCode, 0);
+  strictEqual(result.displays.length, 2);
+  strictEqual(result.displays[0], "'manual'");
+  strictEqual(result.displays[1], "99");
+  await kernel.shutdown();
+});
+
+test("execCount resets to 1 after kernel crash and restart", async () => {
+  const kernel = new PythonKernel({ cwd: process.cwd() });
+  const r1 = await cell(kernel, "print('first')");
+  const r2 = await cell(kernel, "print('second')");
+  strictEqual(r1.execCount, 1);
+  strictEqual(r2.execCount, 2);
+
+  // Crash the kernel
+  const crashResult = await cell(kernel, "import os; os._exit(7)");
+  ok(crashResult.kernelKilled, "crash should set kernelKilled");
+
+  // After crash + restart, execCount should restart from 1
+  const afterResult = await cell(kernel, "print('restarted')");
+  strictEqual(afterResult.execCount, 1);
+  ok(afterResult.restarted, "should report restarted");
+  strictEqual(afterResult.restartReason, "crash");
+  await kernel.shutdown();
+});
