@@ -10,8 +10,19 @@ Issues and PRDs for this repo live as GitHub issues. Use the `gh` CLI for all op
 - **Comment on an issue**: `gh issue comment <number> --body "..."`
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
 - **Close**: `gh issue close <number> --comment "..."`
+- **Spec label**: `/to-spec` issues get `spec` (blue `#1f6feb`) to distinguish PRD/spec issues from implementation tickets.
+- **Ticket label**: `/to-tickets` issues get `ticket` (green `#28a745`) to mark tracer-bullet implementation slices.
 
 Infer the repo from `git remote -v` — `gh` does this automatically when run inside a clone.
+
+## Spec / ticket labels
+
+`/to-spec` publishes a spec issue; `/to-tickets` publishes tracer-bullet ticket issues. Both also get the `ready-for-agent` triage label. Apply `spec` and `ticket` respectively so the two are distinguishable in issue lists:
+
+| Label | Color | Applied to | Meaning |
+|-------|-------|------------|---------|
+| `spec` | `#1f6feb` | `/to-spec` issue | 规格/PRD，描述要实现什么 |
+| `ticket` | `#28a745` | `/to-tickets` issue | 实现 ticket，从 spec 拆出的垂直切片 |
 
 ## Pull requests as a triage surface
 
