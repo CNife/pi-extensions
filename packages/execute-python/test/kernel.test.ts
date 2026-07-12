@@ -275,11 +275,22 @@ test("display(): emits display frames", async () => {
 
 test("timeout: execution times out and reports timedOut", async () => {
   const kernel = new PythonKernel({ cwd: process.cwd() });
+  // Seed state before the timeout cell so we can verify it survives.
+  await cell(kernel, "timeout_state = 'survived'");
   const result = await cell(kernel, "import time; time.sleep(10)", {
     timeoutMs: 500,
   });
   ok(result.cancelled, "should be cancelled");
   ok(result.timedOut, "should be timed out");
+  if (process.platform !== "win32") {
+    ok(!result.kernelKilled, "timeout should not kill kernel on Linux");
+  }
+  // Kernel survives the timeout
+  ok(kernel.isAlive(), "kernel should survive timeout");
+  // Pre-timeout state preserved
+  const afterResult = await cell(kernel, "print(timeout_state)");
+  strictEqual(afterResult.exitCode, 0);
+  strictEqual(afterResult.stdout.trim(), "survived");
   await kernel.shutdown();
 });
 
@@ -294,12 +305,13 @@ test("execution count: increments across calls", async () => {
   await kernel.shutdown();
 });
 
-test("SIGINT cancellation: preserves kernel state", async () => {
+test("SIGINT cancellation: preserves kernel state (sleep)", async () => {
   const kernel = new PythonKernel({ cwd: process.cwd() });
   await cell(kernel, "preserved = 'kept'");
 
   // Start a long-running cell, cancel it via AbortSignal
   const controller = new AbortController();
+  const abortAt = Date.now();
   const execPromise = kernel.execute({
     code: "import time; time.sleep(30)",
     signal: controller.signal,
@@ -311,6 +323,18 @@ test("SIGINT cancellation: preserves kernel state", async () => {
 
   const result = await execPromise;
   ok(result.cancelled, "should be cancelled");
+  ok(!result.timedOut, "manual abort should not be timedOut");
+  if (process.platform !== "win32") {
+    // On Linux, child-pid SIGINT penetrates uv run: the done frame arrives
+    // well within the first escalation grace (CHILD_PID_SIGINT_GRACE_MS = 3s),
+    // so no escalation is needed.
+    ok(!result.kernelKilled, "SIGINT should preserve kernel on Linux");
+    strictEqual(result.exitCode, 130, "cancelled exit code is 130");
+    ok(
+      Date.now() - abortAt < 3000,
+      "done frame should arrive within first grace (no escalation)",
+    );
+  }
 
   // Kernel should still be alive
   ok(kernel.isAlive(), "kernel should survive SIGINT");
@@ -319,6 +343,43 @@ test("SIGINT cancellation: preserves kernel state", async () => {
   const afterResult = await cell(kernel, "print(preserved)");
   strictEqual(afterResult.exitCode, 0);
   strictEqual(afterResult.stdout.trim(), "kept");
+  await kernel.shutdown();
+});
+
+test("SIGINT cancellation: CPU-bound while-True-pass preserves kernel", async () => {
+  const kernel = new PythonKernel({ cwd: process.cwd() });
+  await cell(kernel, "cpu_state = 'survived'");
+
+  // CPU-bound infinite loop - SIGINT must interrupt Python's eval loop
+  const controller = new AbortController();
+  const abortAt = Date.now();
+  const execPromise = kernel.execute({
+    code: "while True:\n    pass",
+    signal: controller.signal,
+  });
+
+  // Give it time to enter the loop
+  await sleep(500);
+  controller.abort();
+
+  const result = await execPromise;
+  ok(result.cancelled, "should be cancelled");
+  if (process.platform !== "win32") {
+    ok(!result.kernelKilled, "SIGINT should preserve kernel on Linux");
+    strictEqual(result.exitCode, 130, "cancelled exit code is 130");
+    ok(
+      Date.now() - abortAt < 3000,
+      "done frame should arrive within first grace (no escalation)",
+    );
+  }
+
+  // Kernel still alive
+  ok(kernel.isAlive(), "kernel should survive CPU-loop SIGINT");
+
+  // State preserved
+  const afterResult = await cell(kernel, "print(cpu_state)");
+  strictEqual(afterResult.exitCode, 0);
+  strictEqual(afterResult.stdout.trim(), "survived");
   await kernel.shutdown();
 });
 
