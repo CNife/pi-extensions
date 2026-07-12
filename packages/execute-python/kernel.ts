@@ -306,13 +306,23 @@ export class PythonKernel {
           );
           if (startErr) return startErr;
         } else if (reason !== null) {
-          // pythonVersion / pythonExecutable change - restart, S loses packages
-          // (different interpreter). Use requested fingerprint directly.
-          this.#lastAddedPackages = [];
-          const startErr = await this.#restartWithFingerprint(
-            requestedFingerprint,
-            reason,
+          // pythonVersion / pythonExecutable change - restart preserving
+          // accumulated S (only reset clears S). Use S∪P with the new
+          // interpreter, and report any newly added requirement strings.
+          const added = addedPackagesOf(
+            requestedPackages,
+            this.#fingerprint.packages,
           );
+          this.#lastAddedPackages = added;
+          const merged: KernelFingerprint = {
+            packages: unionPackages(
+              this.#fingerprint.packages,
+              requestedPackages,
+            ),
+            pythonVersion: requestedFingerprint.pythonVersion,
+            pythonExecutable: requestedFingerprint.pythonExecutable,
+          };
+          const startErr = await this.#restartWithFingerprint(merged, reason);
           if (startErr) return startErr;
         }
         // reason === null: P⊆S, reuse kernel, state preserved.
@@ -345,7 +355,9 @@ export class PythonKernel {
           requestedFingerprint,
         );
         if (reason === "packages") {
-          // P⊄S after a crash: restart with S∪P.
+          // P⊄S after a crash: restart with S∪P, crash reason takes
+          // precedence (old kernel is gone, this is a crash restart
+          // that also picks up the new packages).
           const added = addedPackagesOf(
             requestedPackages,
             this.#fingerprint.packages,
@@ -359,18 +371,26 @@ export class PythonKernel {
             pythonVersion: this.#fingerprint.pythonVersion,
             pythonExecutable: this.#fingerprint.pythonExecutable,
           };
-          // Crash recovery + new packages: crash reason takes precedence
-          // (the old kernel is gone, this is effectively a crash restart
-          // that also picks up the new packages).
           const startErr = await this.#restartWithFingerprint(merged, "crash");
           if (startErr) return startErr;
         } else if (reason !== null) {
-          // pythonVersion / pythonExecutable changed: restart with requested.
-          this.#lastAddedPackages = [];
-          const startErr = await this.#restartWithFingerprint(
-            requestedFingerprint,
-            reason,
+          // pythonVersion / pythonExecutable changed: restart preserving
+          // accumulated S (only reset clears S). Use S∪P with the new
+          // interpreter, and report any newly added requirement strings.
+          const added = addedPackagesOf(
+            requestedPackages,
+            this.#fingerprint.packages,
           );
+          this.#lastAddedPackages = added;
+          const merged: KernelFingerprint = {
+            packages: unionPackages(
+              this.#fingerprint.packages,
+              requestedPackages,
+            ),
+            pythonVersion: requestedFingerprint.pythonVersion,
+            pythonExecutable: requestedFingerprint.pythonExecutable,
+          };
+          const startErr = await this.#restartWithFingerprint(merged, reason);
           if (startErr) return startErr;
         } else {
           // P⊆S and same interpreter: crash recovery, restart with current S.

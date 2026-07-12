@@ -60,6 +60,11 @@ function formatDuration(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
+function appendAdded(base: string, addedPackages: string[]): string {
+  if (addedPackages.length === 0) return base;
+  return `${base} 新增依赖：${addedPackages.join(", ")}。`;
+}
+
 function buildRestartNotice(
   reason: string,
   addedPackages: string[] = [],
@@ -72,13 +77,22 @@ function buildRestartNotice(
         : "内核已重启：依赖变更，内存状态已重置。";
     }
     case "pythonVersion":
-      return "内核已重启：Python 版本切换，内存状态已重置。";
+      return appendAdded(
+        "内核已重启：Python 版本切换，内存状态已重置。",
+        addedPackages,
+      );
     case "pythonExecutable":
-      return "内核已重启：Python 解释器切换，内存状态已重置。";
+      return appendAdded(
+        "内核已重启：Python 解释器切换，内存状态已重置。",
+        addedPackages,
+      );
     case "reset":
       return "内核已重置：所有状态和累加依赖已清空。";
     case "crash":
-      return "内核已崩溃后重启：之前的内存状态已丢失。";
+      return appendAdded(
+        "内核已崩溃后重启：之前的内存状态已丢失。",
+        addedPackages,
+      );
     default:
       return "";
   }
@@ -290,6 +304,12 @@ const executePythonTool = defineTool({
 
       if (result.kernelKilled) {
         contentParts.push("[kernel killed]");
+      }
+
+      if (result.error?.name === "StartupError") {
+        contentParts.push(
+          "[内核启动失败：之前的内存状态已丢失，修正依赖后可重试]",
+        );
       }
 
       const details: ExecutePythonResult = {

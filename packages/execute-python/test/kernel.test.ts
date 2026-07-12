@@ -670,3 +670,70 @@ test("package restart reports addedPackages in result", async () => {
   ok(r2.addedPackages.includes("parsy"));
   await kernel.shutdown();
 });
+
+test("switching python_version preserves accumulated packages (S∪P, not P)", async () => {
+  const kernel = new PythonKernel({ cwd: process.cwd() });
+  // Start with a package, verify it works
+  await cell(kernel, "import typing_extensions; print('pkg ok')", {
+    packages: ["typing-extensions"],
+  });
+
+  // Switch python_version -> restart, S must be preserved (not cleared)
+  const r2 = await cell(kernel, "import typing_extensions; print('still ok')", {
+    pythonVersion: "3.12",
+  });
+  ok(r2.restarted, "should report restarted");
+  strictEqual(r2.restartReason, "pythonVersion");
+  strictEqual(
+    r2.exitCode,
+    0,
+    "import should succeed - S preserved across interpreter switch",
+  );
+  ok(r2.stdout.includes("still ok"));
+  await kernel.shutdown();
+});
+
+test("switching python_version after crash preserves accumulated packages", async () => {
+  const kernel = new PythonKernel({ cwd: process.cwd() });
+  await cell(kernel, "import typing_extensions; print('pkg ok')", {
+    packages: ["typing-extensions"],
+  });
+
+  // Crash the kernel
+  await cell(kernel, "import os; os._exit(7)");
+
+  // Switch python_version after crash -> S must still be preserved
+  const r2 = await cell(
+    kernel,
+    "import typing_extensions; print('recovered')",
+    {
+      pythonVersion: "3.12",
+    },
+  );
+  ok(r2.restarted, "should report restarted");
+  strictEqual(r2.restartReason, "pythonVersion");
+  strictEqual(
+    r2.exitCode,
+    0,
+    "import should succeed - S preserved after crash + interpreter switch",
+  );
+  ok(r2.stdout.includes("recovered"));
+  await kernel.shutdown();
+});
+
+test("crash with new packages reports addedPackages in result", async () => {
+  const kernel = new PythonKernel({ cwd: process.cwd() });
+  await cell(kernel, "print('start')", { packages: ["typing-extensions"] });
+
+  // Crash the kernel
+  await cell(kernel, "import os; os._exit(7)");
+
+  // After crash, declare a new package -> crash reason but addedPackages non-empty
+  const r2 = await cell(kernel, "print('after crash')", {
+    packages: ["parsy"],
+  });
+  ok(r2.restarted, "should report restarted");
+  strictEqual(r2.restartReason, "crash");
+  ok(r2.addedPackages.includes("parsy"), "addedPackages should include parsy");
+  await kernel.shutdown();
+});
