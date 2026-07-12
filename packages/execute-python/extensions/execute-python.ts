@@ -1,18 +1,16 @@
 /**
- * Execute Python Tool - Run Python code with uv
+ * Execute Python Tool - Persistent Python kernel
  *
  * Features:
+ * - Persistent Python kernel: variables, imports, and installed packages
+ *   survive across executePython calls within the same session
  * - Real-time streaming output via onUpdate
  * - Custom TUI rendering (renderCall + renderResult)
- * - Process group management (detached + signal)
- * - Plain text content for LLM consumption
+ * - Kernel crash detection + automatic restart on next call
+ * - SIGINT cancellation preserves kernel state
+ * - session_shutdown cleanup
  */
 
-import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { Type } from "@earendil-works/pi-ai";
 import {
   defineTool,
@@ -20,16 +18,24 @@ import {
   highlightCode,
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
+import { PythonKernel } from "../kernel.ts";
 
 // ============================================================================
 // Types
 // ============================================================================
 
 interface ExecutePythonResult {
-  path: string;
   stdout: string;
   stderr: string;
   exitCode: number;
+  cancelled: boolean;
+  timedOut: boolean;
+  kernelKilled: boolean;
+  error: { name: string; value: string; traceback: string } | null;
+  displays: string[];
+  execCount: number;
+  restarted: boolean;
+  restartReason?: string;
 }
 
 interface ExecutePythonRenderState {
@@ -48,20 +54,25 @@ const UPDATE_THROTTLE_MS = 100;
 // Helpers
 // ============================================================================
 
-function killProcessTree(pid: number): void {
-  try {
-    process.kill(-pid, "SIGKILL");
-  } catch {
-    try {
-      process.kill(pid, "SIGKILL");
-    } catch {
-      // Process already dead
-    }
-  }
-}
-
 function formatDuration(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function buildRestartNotice(reason: string): string {
+  switch (reason) {
+    case "packages":
+      return "内核已重启：新增依赖，内存状态已重置。";
+    case "pythonVersion":
+      return "内核已重启：Python 版本切换，内存状态已重置。";
+    case "pythonExecutable":
+      return "内核已重启：Python 解释器切换，内存状态已重置。";
+    case "reset":
+      return "内核已重置：所有状态和累加依赖已清空。";
+    case "crash":
+      return "内核已崩溃后重启：之前的内存状态已丢失。";
+    default:
+      return "";
+  }
 }
 
 // ============================================================================
@@ -72,18 +83,21 @@ const executePythonTool = defineTool({
   name: "executePython",
   label: "Execute Python",
   description: [
-    "Execute Python code with uv. No bash escaping needed, auto-manages dependencies.",
-    "Output is streamed in real-time with PYTHONUNBUFFERED=1.",
+    "Execute Python code in a persistent kernel. Variables, imports, and installed",
+    "packages survive across calls within the same session. No bash escaping needed.",
     "Optionally provide timeout in seconds.",
   ].join(" "),
-  promptSnippet: "Execute Python code (prefer over bash for complex tasks)",
+  promptSnippet:
+    "Execute Python code in a persistent kernel (state survives across calls)",
   promptGuidelines: [
     "Use for complex tasks: heavy computation, multi-step data processing, heredoc-style scripts",
-    "Use packages param to declare ALL third-party dependencies (uv auto-manages venv)",
+    "Variables and imports persist across calls - no need to re-import or re-define",
+    "Use packages param to declare third-party dependencies (e.g. ['requests', 'pandas>=2.0'])",
     "Prefer bash for simple commands or short pipes (≤3 |)",
-    "No bash escaping needed — write Python code directly",
-    "Use executePython for running Python code (python -c, scripts) instead of bash.",
+    "No bash escaping needed - write Python code directly",
+    "Use executePython for running Python code (python -c, scripts) instead of bash",
   ],
+  executionMode: "sequential",
   parameters: Type.Object({
     code: Type.String({
       description: "Python code to execute, no escaping needed",
@@ -91,7 +105,7 @@ const executePythonTool = defineTool({
     packages: Type.Optional(
       Type.Array(Type.String(), {
         description:
-          "PyPI dependencies to auto-install, e.g. ['requests', 'pandas>=2.0']. uv handles venv automatically.",
+          "PyPI dependencies to auto-install, e.g. ['requests', 'pandas>=2.0']. uv handles venv automatically. Declaring already-installed packages is a no-op (kernel reuses).",
         default: [],
       }),
     ),
@@ -111,11 +125,24 @@ const executePythonTool = defineTool({
         description: "Timeout in seconds, no timeout by default",
       }),
     ),
+    reset: Type.Optional(
+      Type.Boolean({
+        description:
+          "Reset the kernel: clear all variables, imports, and accumulated dependencies, then execute the provided code in a fresh kernel",
+        default: false,
+      }),
+    ),
   }),
 
-  async execute(_toolCallId, params, signal, onUpdate, _ctx) {
-    const { code, packages, python_version, python_executable, timeout } =
-      params;
+  async execute(_toolCallId, params, signal, onUpdate, ctx) {
+    const {
+      code,
+      packages,
+      python_version,
+      python_executable,
+      timeout,
+      reset,
+    } = params;
 
     // Validate mutually exclusive parameters
     if (python_version && python_executable) {
@@ -127,173 +154,143 @@ const executePythonTool = defineTool({
           },
         ],
         details: {
-          path: "",
           stdout: "",
           stderr: "python_version and python_executable are mutually exclusive",
           exitCode: 1,
+          cancelled: false,
+          timedOut: false,
+          kernelKilled: false,
+          error: null,
+          displays: [],
+          execCount: 0,
+          restarted: false,
         } as ExecutePythonResult,
       };
     }
 
-    // Generate temp file path
-    const id = randomUUID();
-    const tempPath = join(tmpdir(), `pi-python-${id}.py`);
+    // Get or create kernel for this session
+    const kernel = getOrCreateKernel(ctx.cwd);
+
+    // Streaming state
+    let stdout = "";
+    let stderr = "";
+    let updateTimer: ReturnType<typeof setTimeout> | undefined;
+    let updateDirty = false;
+    let lastUpdateAt = 0;
+
+    const emitUpdate = () => {
+      if (!onUpdate || !updateDirty) return;
+      updateDirty = false;
+      lastUpdateAt = Date.now();
+      onUpdate({
+        content: [
+          {
+            type: "text" as const,
+            text: stdout || stderr ? `${stdout}${stderr}` : "",
+          },
+        ],
+        details: {
+          stdout,
+          stderr,
+          exitCode: -1,
+          cancelled: false,
+          timedOut: false,
+          kernelKilled: false,
+          error: null,
+          displays: [],
+          execCount: 0,
+          restarted: false,
+        } as ExecutePythonResult,
+      });
+    };
+
+    const scheduleUpdate = () => {
+      if (!onUpdate) return;
+      updateDirty = true;
+      const delay = UPDATE_THROTTLE_MS - (Date.now() - lastUpdateAt);
+      if (delay <= 0) {
+        if (updateTimer) clearTimeout(updateTimer);
+        emitUpdate();
+      } else if (!updateTimer) {
+        updateTimer = setTimeout(() => {
+          updateTimer = undefined;
+          emitUpdate();
+        }, delay);
+      }
+    };
 
     try {
-      // Write code to temp file
-      await writeFile(tempPath, code, "utf-8");
-
-      // Build uv command
-      const args = ["run"];
-
-      if (python_version) {
-        args.push("--python", python_version);
-      } else if (python_executable) {
-        args.push("--python", python_executable);
-      }
-
-      if (packages && packages.length > 0) {
-        for (const pkg of packages) {
-          args.push("--with", pkg);
-        }
-      }
-
-      args.push(tempPath);
-
-      // Execute uv command with streaming
-      const result = await new Promise<ExecutePythonResult>((resolve) => {
-        let stdout = "";
-        let stderr = "";
-        let timedOut = false;
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
-        let updateTimer: ReturnType<typeof setTimeout> | undefined;
-        let updateDirty = false;
-        let lastUpdateAt = 0;
-
-        const child = spawn("uv", args, {
-          stdio: ["ignore", "pipe", "pipe"],
-          detached: process.platform !== "win32",
-          windowsHide: true,
-          env: { ...process.env, PYTHONUNBUFFERED: "1" },
-        });
-
-        // Timeout handling
-        if (timeout && timeout > 0) {
-          timeoutId = setTimeout(() => {
-            timedOut = true;
-            if (child.pid) {
-              killProcessTree(child.pid);
-            }
-          }, timeout * 1000);
-        }
-
-        // Signal handling for cancellation
-        if (signal) {
-          if (signal.aborted) {
-            if (child.pid) killProcessTree(child.pid);
-          } else {
-            signal.addEventListener(
-              "abort",
-              () => {
-                if (child.pid) killProcessTree(child.pid);
-              },
-              { once: true },
-            );
-          }
-        }
-
-        // Throttled update function
-        const emitUpdate = () => {
-          if (!onUpdate || !updateDirty) return;
-          updateDirty = false;
-          lastUpdateAt = Date.now();
-          onUpdate({
-            content: [
-              {
-                type: "text" as const,
-                text: stdout || stderr ? `${stdout}${stderr}` : "",
-              },
-            ],
-            details: {
-              path: tempPath,
-              stdout,
-              stderr,
-              exitCode: -1, // Still running
-            } as ExecutePythonResult,
-          });
-        };
-
-        const scheduleUpdate = () => {
-          if (!onUpdate) return;
-          updateDirty = true;
-          const delay = UPDATE_THROTTLE_MS - (Date.now() - lastUpdateAt);
-          if (delay <= 0) {
-            if (updateTimer) clearTimeout(updateTimer);
-            emitUpdate();
-          } else if (!updateTimer) {
-            updateTimer = setTimeout(() => {
-              updateTimer = undefined;
-              emitUpdate();
-            }, delay);
-          }
-        };
-
-        // Stream stdout
-        child.stdout?.setEncoding("utf8");
-        child.stdout?.on("data", (chunk: string) => {
-          stdout += chunk;
+      const result = await kernel.execute({
+        code,
+        packages,
+        pythonVersion: python_version,
+        pythonExecutable: python_executable,
+        reset,
+        signal,
+        onChunk: (text, stream) => {
+          if (stream === "stdout") stdout += text;
+          else stderr += text;
           scheduleUpdate();
-        });
-
-        // Stream stderr
-        child.stderr?.setEncoding("utf8");
-        child.stderr?.on("data", (chunk: string) => {
-          stderr += chunk;
-          scheduleUpdate();
-        });
-
-        // Handle spawn errors
-        child.on("error", (error) => {
-          if (timeoutId) clearTimeout(timeoutId);
-          if (updateTimer) clearTimeout(updateTimer);
-          resolve({
-            path: tempPath,
-            stdout,
-            stderr: `spawn error: ${error.message}`,
-            exitCode: -1,
-          });
-        });
-
-        // Handle process exit
-        child.on("close", (code) => {
-          if (timeoutId) clearTimeout(timeoutId);
-          if (updateTimer) clearTimeout(updateTimer);
-
-          // Preserve any stderr produced before timeout and append
-          // a timeout marker to avoid losing diagnostic details.
-          const finalStderr = timedOut
-            ? stderr
-              ? `${stderr}\n[timeout after ${timeout}s]`
-              : `timeout after ${timeout}s`
-            : stderr;
-
-          resolve({
-            path: tempPath,
-            stdout,
-            stderr: finalStderr,
-            exitCode: timedOut ? -1 : (code ?? 0),
-          });
-        });
+        },
+        onDisplay: () => scheduleUpdate(),
+        timeoutMs: timeout ? timeout * 1000 : undefined,
       });
 
+      // Flush any pending update
+      if (updateTimer) {
+        clearTimeout(updateTimer);
+        updateTimer = undefined;
+      }
+
       // Build plain text content for LLM
-      const contentParts = [`exitCode: ${result.exitCode}`];
-      contentParts.push(`--- stdout ---`);
+      const contentParts: string[] = [];
+
+      // Restart notice
+      if (result.restarted && result.restartReason) {
+        const notice = buildRestartNotice(result.restartReason);
+        if (notice) contentParts.push(notice);
+      }
+
+      // Exec count
+      contentParts.push(`[cell ${result.execCount}]`);
+
+      contentParts.push(`exitCode: ${result.exitCode}`);
+      contentParts.push("--- stdout ---");
       contentParts.push(result.stdout || "(no output)");
+
+      if (result.displays.length > 0) {
+        contentParts.push("--- display ---");
+        for (const d of result.displays) {
+          contentParts.push(d);
+        }
+      }
+
       if (result.stderr) {
-        contentParts.push(`--- stderr ---`);
+        contentParts.push("--- stderr ---");
         contentParts.push(result.stderr);
       }
+
+      if (result.cancelled) {
+        contentParts.push(result.timedOut ? "[timed out]" : "[cancelled]");
+      }
+
+      if (result.kernelKilled) {
+        contentParts.push("[kernel killed]");
+      }
+
+      const details: ExecutePythonResult = {
+        stdout: result.stdout,
+        stderr: result.stderr,
+        exitCode: result.exitCode,
+        cancelled: result.cancelled,
+        timedOut: result.timedOut,
+        kernelKilled: result.kernelKilled,
+        error: result.error,
+        displays: result.displays,
+        execCount: result.execCount,
+        restarted: result.restarted,
+        restartReason: result.restartReason,
+      };
 
       return {
         content: [
@@ -302,21 +299,37 @@ const executePythonTool = defineTool({
             text: contentParts.join("\n"),
           },
         ],
-        details: result,
+        details,
       };
     } catch (error) {
+      // Kernel startup failure or other unexpected error
+      if (updateTimer) {
+        clearTimeout(updateTimer);
+        updateTimer = undefined;
+      }
+      const errorMsg = error instanceof Error ? error.message : String(error);
       return {
         content: [
           {
             type: "text" as const,
-            text: `exitCode: -1\n--- stderr ---\n${error instanceof Error ? error.message : String(error)}`,
+            text: `exitCode: -1\n--- stderr ---\n${errorMsg}`,
           },
         ],
         details: {
-          path: tempPath,
-          stdout: "",
-          stderr: error instanceof Error ? error.message : String(error),
+          stdout,
+          stderr: errorMsg,
           exitCode: -1,
+          cancelled: false,
+          timedOut: false,
+          kernelKilled: true,
+          error: {
+            name: "StartupError",
+            value: errorMsg,
+            traceback: "",
+          },
+          displays: [],
+          execCount: 0,
+          restarted: false,
         } as ExecutePythonResult,
       };
     }
@@ -356,9 +369,10 @@ const executePythonTool = defineTool({
       }
     }
 
+    const details = result.details as ExecutePythonResult | undefined;
+
     // Partial result (still running)
     if (isPartial) {
-      const details = result.details as ExecutePythonResult | undefined;
       let text = theme.fg("warning", "Running...");
       if (state.startedAt) {
         const elapsed = Date.now() - state.startedAt;
@@ -375,8 +389,15 @@ const executePythonTool = defineTool({
     }
 
     // Final result
-    const details = result.details as ExecutePythonResult | undefined;
     let text = "";
+
+    // Restart notice
+    if (details?.restarted && details.restartReason) {
+      const notice = buildRestartNotice(details.restartReason);
+      if (notice) {
+        text += `${theme.fg("warning", notice)}\n`;
+      }
+    }
 
     // Collapsed mode: show first 5 lines of stdout
     if (!expanded && details?.stdout) {
@@ -407,18 +428,31 @@ const executePythonTool = defineTool({
       }
     }
 
+    // Show displays
+    if (details?.displays && details.displays.length > 0) {
+      text += `\n${theme.fg("dim", "--- display ---")}`;
+      for (const d of details.displays) {
+        text += `\n${d}`;
+      }
+    }
+
     // Status line: exitCode + stdout lines + duration
     const exitCode = details?.exitCode ?? -1;
     const exitText =
       exitCode === 0
         ? theme.fg("success", "Done")
-        : theme.fg("error", `Error ${exitCode}`);
+        : details?.cancelled
+          ? theme.fg("warning", "Cancelled")
+          : theme.fg("error", `Error ${exitCode}`);
 
     const stdoutLines = details?.stdout
       ? details.stdout.split("\n").filter((l) => l.trim()).length
       : 0;
 
     const statusParts = [exitText];
+    if (details?.execCount && details.execCount > 0) {
+      statusParts.push(theme.fg("dim", `cell ${details.execCount}`));
+    }
     if (stdoutLines > 0) {
       statusParts.push(theme.fg("dim", `${stdoutLines} lines`));
     }
@@ -439,6 +473,19 @@ const executePythonTool = defineTool({
     return new Text(text, 0, 0);
   },
 });
+
+// ============================================================================
+// Kernel management
+// ============================================================================
+
+let sessionKernel: PythonKernel | null = null;
+
+function getOrCreateKernel(cwd: string): PythonKernel {
+  if (!sessionKernel) {
+    sessionKernel = new PythonKernel({ cwd });
+  }
+  return sessionKernel;
+}
 
 // ============================================================================
 // Extension Export
@@ -463,6 +510,14 @@ export default function (pi: ExtensionAPI) {
           },
         ],
       };
+    }
+  });
+
+  // Clean up kernel on session shutdown
+  pi.on("session_shutdown", async () => {
+    if (sessionKernel) {
+      await sessionKernel.shutdown();
+      sessionKernel = null;
     }
   });
 }
