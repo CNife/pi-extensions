@@ -8,11 +8,11 @@ NDJSON-over-stdio protocol (one JSON object per line):
 
   Runner -> host (all response frames carry the request id except "ready"):
     {"type": "ready"}
-    {"type": "started", "id": "<rid>", "count": <int>}
     {"type": "stream", "id": "<rid>", "stream": "stdout"|"stderr", "data": "<str>"}
     {"type": "display", "id": "<rid>", "data": "<repr>"}
     {"type": "done", "id": "<rid>", "exit_code": <int>,
-     "error": null | {"name","value","traceback"}, "cancelled": <bool>}
+     "error": null | {"name","value","traceback"}, "cancelled": <bool>,
+     "variables": ["<name>", ...]}
 
 IPC channel: a duplicated real stdout (fd 1). User code's sys.stdout is
 redirected to a frame emitter, so user print() never corrupts the NDJSON
@@ -37,6 +37,7 @@ import signal
 import sys
 import threading
 import traceback
+import types
 
 # --- IPC channel: a duplicated real stdout (fd 1). -----------------------
 # User code's sys.stdout is redirected to a frame emitter below, so user
@@ -52,7 +53,6 @@ def _send(frame: dict) -> None:
 
 # --- Persistent execution namespace (state survives across cells). -------
 _NS: dict = {"__name__": "__main__"}
-_exec_count = 0
 # Current request id, threaded into stream/display frames so the host can
 # correlate them with the pending execution. Set at the top of _run_cell.
 _CURRENT_RID: str = ""
@@ -72,7 +72,14 @@ class _StreamEmitter:
 
     def write(self, data: str) -> int:
         if data:
-            _send({"type": "stream", "id": _CURRENT_RID, "stream": self._name, "data": data})
+            _send(
+                {
+                    "type": "stream",
+                    "id": _CURRENT_RID,
+                    "stream": self._name,
+                    "data": data,
+                }
+            )
         return len(data)
 
     def flush(self) -> None:
@@ -152,10 +159,8 @@ def _compile_cell(code: str):
 
 
 def _run_cell(rid: str, code: str) -> None:
-    global _exec_count, _CURRENT_RID
-    _exec_count += 1
+    global _CURRENT_RID
     _CURRENT_RID = rid
-    _send({"type": "started", "id": rid, "count": _exec_count})
 
     _install_exec_sigint()
     cancelled = False
@@ -180,7 +185,9 @@ def _run_cell(rid: str, code: str) -> None:
         }
     except SystemExit as exc:
         # A plain sys.exit() inside a cell ends the cell, not the kernel.
-        code_int = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+        code_int = (
+            exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+        )
         exit_code = code_int
     except BaseException as exc:  # noqa: BLE001 - surface every user error
         exit_code = 1
@@ -191,6 +198,18 @@ def _run_cell(rid: str, code: str) -> None:
     finally:
         _install_idle_sigint()
 
+    # Snapshot of persistent namespace: top-level user names, filtered to
+    # what a caller needs to decide whether to reuse prior state. Drops
+    # dunder names, the injected display() hook, and imported modules
+    # (re-importing a module is cheap, so listing them is noise).
+    variables = sorted(
+        k
+        for k, v in _NS.items()
+        if not k.startswith("_")
+        and k != "display"
+        and not isinstance(v, types.ModuleType)
+    )
+
     _send(
         {
             "type": "done",
@@ -198,6 +217,7 @@ def _run_cell(rid: str, code: str) -> None:
             "exit_code": exit_code,
             "error": error,
             "cancelled": cancelled,
+            "variables": variables,
         }
     )
 

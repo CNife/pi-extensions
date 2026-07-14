@@ -33,7 +33,7 @@ interface ExecutePythonResult {
   kernelKilled: boolean;
   error: { name: string; value: string; traceback: string } | null;
   displays: string[];
-  execCount: number;
+  variables: string[];
   restarted: boolean;
   restartReason?: string;
   /** Requirement strings newly added to the accumulated set S (P \ S). */
@@ -185,7 +185,7 @@ const executePythonTool = defineTool({
           kernelKilled: false,
           error: null,
           displays: [],
-          execCount: 0,
+          variables: [],
           restarted: false,
           addedPackages: [],
         } as ExecutePythonResult,
@@ -222,7 +222,7 @@ const executePythonTool = defineTool({
           kernelKilled: false,
           error: null,
           displays: [],
-          execCount: 0,
+          variables: [],
           restarted: false,
           addedPackages: [],
         } as ExecutePythonResult,
@@ -279,9 +279,6 @@ const executePythonTool = defineTool({
         if (notice) contentParts.push(notice);
       }
 
-      // Exec count
-      contentParts.push(`[cell ${result.execCount}]`);
-
       contentParts.push(`exitCode: ${result.exitCode}`);
       contentParts.push("--- stdout ---");
       contentParts.push(result.stdout || "(no output)");
@@ -291,6 +288,19 @@ const executePythonTool = defineTool({
         for (const d of result.displays) {
           contentParts.push(d);
         }
+      }
+
+      // Kernel state snapshot: top-level variable names so the LLM can see
+      // what survives in the persistent namespace and reuse it instead of
+      // re-defining.
+      if (result.variables.length > 0) {
+        const shown = result.variables.slice(0, 30);
+        let line = shown.join(", ");
+        if (result.variables.length > 30) {
+          line += `, ... ${result.variables.length - 30} more`;
+        }
+        contentParts.push("--- kernel state ---");
+        contentParts.push(line);
       }
 
       if (result.stderr) {
@@ -321,7 +331,7 @@ const executePythonTool = defineTool({
         kernelKilled: result.kernelKilled,
         error: result.error,
         displays: result.displays,
-        execCount: result.execCount,
+        variables: result.variables,
         restarted: result.restarted,
         restartReason: result.restartReason,
         addedPackages: result.addedPackages,
@@ -364,7 +374,7 @@ const executePythonTool = defineTool({
             traceback: "",
           },
           displays: [],
-          execCount: 0,
+          variables: [],
           restarted: false,
           addedPackages: [],
         } as ExecutePythonResult,
@@ -375,7 +385,7 @@ const executePythonTool = defineTool({
   // Custom rendering for tool call display
   renderCall(args, theme, _context) {
     const code = args.code;
-    let text = "";
+    let text = `${theme.fg("toolTitle", theme.bold("python"))}\n`;
     if (args.packages && args.packages.length > 0) {
       text += `${theme.fg("dim", `packages: ${args.packages.join(", ")}`)}\n`;
     }
@@ -490,9 +500,6 @@ const executePythonTool = defineTool({
       : 0;
 
     const statusParts = [exitText];
-    if (details?.execCount && details.execCount > 0) {
-      statusParts.push(theme.fg("dim", `cell ${details.execCount}`));
-    }
     if (stdoutLines > 0) {
       statusParts.push(theme.fg("dim", `${stdoutLines} lines`));
     }
@@ -533,25 +540,6 @@ function getOrCreateKernel(cwd: string): PythonKernel {
 
 export default function (pi: ExtensionAPI) {
   pi.registerTool(executePythonTool);
-
-  // Intercept bash tool results to guide AI toward executePython
-  pi.on("tool_result", async (event, _ctx) => {
-    if (event.toolName !== "bash") return;
-
-    const command = (event.input as { command?: string })?.command ?? "";
-    // Detect python -c patterns in bash commands
-    if (/python[0-9.]*\s+-c\s/.test(command)) {
-      return {
-        content: [
-          ...event.content,
-          {
-            type: "text" as const,
-            text: "\nTip: Use executePython for Python code instead of bash.",
-          },
-        ],
-      };
-    }
-  });
 
   // Clean up kernel on session shutdown
   pi.on("session_shutdown", async () => {

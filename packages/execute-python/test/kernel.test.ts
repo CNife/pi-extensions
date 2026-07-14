@@ -294,14 +294,25 @@ test("timeout: execution times out and reports timedOut", async () => {
   await kernel.shutdown();
 });
 
-test("execution count: increments across calls", async () => {
+test("variables: snapshot reflects top-level names, accumulates across calls", async () => {
   const kernel = new PythonKernel({ cwd: process.cwd() });
+  // First cell: empty namespace (only __name__ + display, both filtered)
   const r1 = await cell(kernel, "print('a')");
-  const r2 = await cell(kernel, "print('b')");
-  const r3 = await cell(kernel, "print('c')");
-  strictEqual(r1.execCount, 1);
-  strictEqual(r2.execCount, 2);
-  strictEqual(r3.execCount, 3);
+  strictEqual(r1.variables.length, 0, "no user variables yet");
+
+  // Define a variable + import a module + define a function
+  const r2 = await cell(kernel, "x = 42\nimport math\ndef f():\n    pass");
+  // modules filtered out, dunder filtered, display filtered; x and f remain
+  ok(r2.variables.includes("x"), "x should be in snapshot");
+  ok(r2.variables.includes("f"), "f should be in snapshot");
+  ok(!r2.variables.includes("math"), "imported module should be filtered");
+  ok(!r2.variables.some((n) => n.startsWith("_")), "dunder filtered");
+
+  // Snapshot accumulates: x and f survive into the next call
+  const r3 = await cell(kernel, "y = 'hello'");
+  ok(r3.variables.includes("x"), "x survived");
+  ok(r3.variables.includes("f"), "f survived");
+  ok(r3.variables.includes("y"), "y added");
   await kernel.shutdown();
 });
 
@@ -489,22 +500,22 @@ test("auto-display and manual display() coexist", async () => {
   await kernel.shutdown();
 });
 
-test("execCount resets to 1 after kernel crash and restart", async () => {
+test("variables: cleared after kernel crash and restart", async () => {
   const kernel = new PythonKernel({ cwd: process.cwd() });
-  const r1 = await cell(kernel, "print('first')");
-  const r2 = await cell(kernel, "print('second')");
-  strictEqual(r1.execCount, 1);
-  strictEqual(r2.execCount, 2);
+  await cell(kernel, "keeper = 1");
+  const r1 = await cell(kernel, "print('ok')");
+  ok(r1.variables.includes("keeper"), "keeper in snapshot");
 
   // Crash the kernel
   const crashResult = await cell(kernel, "import os; os._exit(7)");
   ok(crashResult.kernelKilled, "crash should set kernelKilled");
 
-  // After crash + restart, execCount should restart from 1
+  // After crash + restart, namespace is fresh -> keeper gone
   const afterResult = await cell(kernel, "print('restarted')");
-  strictEqual(afterResult.execCount, 1);
   ok(afterResult.restarted, "should report restarted");
   strictEqual(afterResult.restartReason, "crash");
+  ok(!afterResult.variables.includes("keeper"), "keeper lost after crash");
+  strictEqual(afterResult.variables.length, 0, "fresh namespace is empty");
   await kernel.shutdown();
 });
 test("accumulation model: A then B restarts with S=A∪B, both imports work", async () => {
