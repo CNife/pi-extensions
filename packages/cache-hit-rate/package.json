@@ -1,11 +1,11 @@
 {
   "name": "@cnife/pi-cache-hit-rate",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": false,
   "keywords": [
     "pi-package"
   ],
-  "description": "Show cumulative session cache hit rate in pi footer",
+  "description": "[Deprecated] Show cumulative session cache hit rate in pi footer",
   "homepage": "https://github.com/CNife/pi-extensions#readme",
   "bugs": {
     "url": "https://github.com/CNife/pi-extensions/issues"

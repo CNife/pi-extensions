@@ -1,5 +1,7 @@
 # @cnife/pi-cache-hit-rate
 
+> ⚠️ Deprecated. pi now provides native cache hit footer and `/session` cache stats.
+
 在 pi 的 footer 状态行中显示当前会话的**缓存命中率**和**缓存失效**指标。
 
 ## 功能
