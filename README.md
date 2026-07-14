@@ -11,7 +11,6 @@ Refer to [CONTEXT.md](CONTEXT.md) for the project's domain glossary.
 |---|------|------|
 | [`@cnife/pi-agent-loop-reflection`](#agent-loop-reflection) | Extension | 长时 agent loop 自动插入反思提醒 |
 | [`@cnife/pi-auto-naming-session`](#auto-naming-session) | Extension | turn 边界自动生成/刷新会话标题 |
-| [`@cnife/pi-cache-hit-rate`](#cache-hit-rate) | Extension | 在 footer 中显示当前会话累计缓存命中率 |
 | [`@cnife/pi-execute-python`](#execute-python) | Extension | 用 uv 执行 Python，实时流式输出，自动依赖管理 |
 | [`@cnife/pi-inference-speed`](#inference-speed) | Extension | footer 显示推理速度 TPS 和首 token 延迟 TTFT |
 | [`@cnife/pi-miscs`](#miscs) | Extension | 调试 & 快捷退出等小工具 |
@@ -23,6 +22,7 @@ Refer to [CONTEXT.md](CONTEXT.md) for the project's domain glossary.
 | `@cnife/pi-change-based-workflow` | 0.2.1 | 2026-07-11 | 已退役，源码见 [archive/](archive/) |
 | `@cnife/pi-obsidian-diary` | 0.1.1 | 2026-07-11 | 不再维护（skill 仍独立维护），源码见 [archive/](archive/) |
 | `@cnife/pi-simple-plannotator` | 0.1.6 | 2026-07-11 | 改用 `@plannotator/pi-extension`，源码见 [archive/](archive/) |
+| `@cnife/pi-cache-hit-rate` | 0.4.1 | 2026-07-14 | pi 原生已支持 cache hit footer 与 /session 缓存统计，源码见 [archive/](archive/) |
 
 ## Install
 
@@ -37,7 +37,6 @@ pi install git:github.com/CNife/pi-extensions
 ```bash
 pi install npm:@cnife/pi-agent-loop-reflection
 pi install npm:@cnife/pi-auto-naming-session
-pi install npm:@cnife/pi-cache-hit-rate
 pi install npm:@cnife/pi-execute-python
 pi install npm:@cnife/pi-inference-speed
 pi install npm:@cnife/pi-miscs
@@ -56,14 +55,6 @@ pi install npm:@cnife/pi-miscs
 - 进程组管理（detached + signal 清理）
 - 纯文本内容供 LLM 消费
 - 错误信息完整展示
-
-### cache-hit-rate
-
-在 pi footer 的状态行中显示当前会话的累计缓存命中率：
-
-- 文案格式：`Cached 99.99%`
-- 统计口径：`cacheRead / (input + cacheRead + cacheWrite)`
-- 颜色阈值：`<75%` 红，`75%-85%` 黄，`85%-95%` 默认前景色，`>=95%` 绿
 
 ### agent-loop-reflection
 
