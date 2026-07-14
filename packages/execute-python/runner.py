@@ -8,11 +8,11 @@ NDJSON-over-stdio protocol (one JSON object per line):
 
   Runner -> host (all response frames carry the request id except "ready"):
     {"type": "ready"}
-    {"type": "started", "id": "<rid>", "count": <int>}
     {"type": "stream", "id": "<rid>", "stream": "stdout"|"stderr", "data": "<str>"}
     {"type": "display", "id": "<rid>", "data": "<repr>"}
     {"type": "done", "id": "<rid>", "exit_code": <int>,
-     "error": null | {"name","value","traceback"}, "cancelled": <bool>}
+     "error": null | {"name","value","traceback"}, "cancelled": <bool>,
+     "variables": ["<name>", ...]}
 
 IPC channel: a duplicated real stdout (fd 1). User code's sys.stdout is
 redirected to a frame emitter, so user print() never corrupts the NDJSON
@@ -72,7 +72,14 @@ class _StreamEmitter:
 
     def write(self, data: str) -> int:
         if data:
-            _send({"type": "stream", "id": _CURRENT_RID, "stream": self._name, "data": data})
+            _send(
+                {
+                    "type": "stream",
+                    "id": _CURRENT_RID,
+                    "stream": self._name,
+                    "data": data,
+                }
+            )
         return len(data)
 
     def flush(self) -> None:
@@ -154,7 +161,6 @@ def _compile_cell(code: str):
 def _run_cell(rid: str, code: str) -> None:
     global _CURRENT_RID
     _CURRENT_RID = rid
-    _send({"type": "started", "id": rid})
 
     _install_exec_sigint()
     cancelled = False
@@ -179,7 +185,9 @@ def _run_cell(rid: str, code: str) -> None:
         }
     except SystemExit as exc:
         # A plain sys.exit() inside a cell ends the cell, not the kernel.
-        code_int = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+        code_int = (
+            exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+        )
         exit_code = code_int
     except BaseException as exc:  # noqa: BLE001 - surface every user error
         exit_code = 1
