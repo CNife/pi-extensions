@@ -73,7 +73,7 @@ export interface KernelExecuteResult {
   stdout: string;
   stderr: string;
   displays: string[];
-  execCount: number;
+  variables: string[];
   restarted: boolean;
   restartReason?: RestartReason;
   /** Requirement strings newly added to S by this call (P \ S). Empty unless a package-triggered restart occurred. */
@@ -118,7 +118,7 @@ interface PendingExec {
   kernelKilled: boolean;
   error: KernelError | null;
   exitCode: number | undefined;
-  execCount: number;
+  variables: string[];
   escalationTimer: ReturnType<typeof setTimeout> | null;
   escalationStep: number;
   settled: boolean;
@@ -219,7 +219,6 @@ export class PythonKernel {
   #status: KernelStatus = "stopped";
   #readBuffer = "";
   #pending = new Map<string, PendingExec>();
-  #execCount = 0;
   #cwd: string;
   #onReady: (() => void) | null = null;
   #onStartFail: ((err: Error) => void) | null = null;
@@ -643,7 +642,7 @@ export class PythonKernel {
       stdout: "",
       stderr: message,
       displays: [],
-      execCount: 0,
+      variables: [],
       restarted: false,
       addedPackages: [],
     };
@@ -668,7 +667,7 @@ export class PythonKernel {
       kernelKilled: false,
       error: null,
       exitCode: undefined,
-      execCount: 0,
+      variables: [],
       escalationTimer: null,
       escalationStep: 0,
       settled: false,
@@ -812,7 +811,7 @@ export class PythonKernel {
       stdout: pending.stdout,
       stderr: pending.stderr,
       displays: pending.displays,
-      execCount: pending.execCount,
+      variables: pending.variables,
       restarted: this.#lastRestarted,
       restartReason: this.#lastRestartReason,
       addedPackages: this.#lastAddedPackages,
@@ -904,13 +903,6 @@ export class PythonKernel {
     const rid = frame.id as string | undefined;
     const pending = rid ? this.#pending.get(rid) : undefined;
     switch (type) {
-      case "started": {
-        if (typeof frame.count === "number") {
-          this.#execCount = frame.count;
-          if (pending) pending.execCount = frame.count;
-        }
-        return;
-      }
       case "stream": {
         if (!pending) return;
         const text = (frame.data as string) ?? "";
@@ -945,6 +937,11 @@ export class PythonKernel {
           };
         }
         if (frame.cancelled) pending.cancelled = true;
+        if (Array.isArray(frame.variables)) {
+          pending.variables = (frame.variables as unknown[]).map((v) =>
+            String(v),
+          );
+        }
         this.#finalize(pending);
         return;
       }
