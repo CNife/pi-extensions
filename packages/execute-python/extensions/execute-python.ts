@@ -385,7 +385,7 @@ const executePythonTool = defineTool({
   // Custom rendering for tool call display
   renderCall(args, theme, _context) {
     const code = args.code;
-    let text = "";
+    let text = `${theme.fg("toolTitle", theme.bold("python"))}\n`;
     if (args.packages && args.packages.length > 0) {
       text += `${theme.fg("dim", `packages: ${args.packages.join(", ")}`)}\n`;
     }
