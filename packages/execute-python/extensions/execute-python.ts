@@ -541,25 +541,6 @@ function getOrCreateKernel(cwd: string): PythonKernel {
 export default function (pi: ExtensionAPI) {
   pi.registerTool(executePythonTool);
 
-  // Intercept bash tool results to guide AI toward executePython
-  pi.on("tool_result", async (event, _ctx) => {
-    if (event.toolName !== "bash") return;
-
-    const command = (event.input as { command?: string })?.command ?? "";
-    // Detect python -c patterns in bash commands
-    if (/python[0-9.]*\s+-c\s/.test(command)) {
-      return {
-        content: [
-          ...event.content,
-          {
-            type: "text" as const,
-            text: "\nTip: Use executePython for Python code instead of bash.",
-          },
-        ],
-      };
-    }
-  });
-
   // Clean up kernel on session shutdown
   pi.on("session_shutdown", async () => {
     if (sessionKernel) {
