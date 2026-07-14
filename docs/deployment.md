@@ -3,7 +3,6 @@
 各子包独立发布到 npm，用户单独安装：
 
 ```bash
-pi install npm:@cnife/pi-cache-hit-rate
 pi install npm:@cnife/pi-execute-python
 # ...
 ```
