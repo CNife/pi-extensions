@@ -328,9 +328,9 @@ omp recap 的 **ephemeral side-channel turn**（`agent-session.ts` 第 15256 行
 
 | 文档 | 说明 |
 |------|------|
-| `docs/research/similar-pi-extensions.md` | 本文：类似功能的周期总结/刷新机制调研 |
-| `docs/research/session-naming-across-agents.md` | 各 agent 命名机制对照 |
-| `docs/research/auto-naming-transcript-cost.md` | 全量 vs 增量 transcript 的 token 成本测量 |
+| `packages/auto-naming-session/docs/research/similar-pi-extensions.md` | 本文：类似功能的周期总结/刷新机制调研 |
+| `packages/auto-naming-session/docs/research/session-naming-across-agents.md` | 各 agent 命名机制对照 |
+| `packages/auto-naming-session/docs/research/auto-naming-transcript-cost.md` | 全量 vs 增量 transcript 的 token 成本测量 |
 
 ---
 

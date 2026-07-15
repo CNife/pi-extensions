@@ -20,6 +20,9 @@
     "access": "public",
     "provenance": true
   },
+  "files": [
+    "extensions"
+  ],
   "pi": {
     "extensions": [
       "./extensions"
