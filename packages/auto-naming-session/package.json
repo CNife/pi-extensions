@@ -21,7 +21,8 @@
     "provenance": true
   },
   "files": [
-    "extensions"
+    "extensions",
+    "CHANGELOG.md"
   ],
   "pi": {
     "extensions": [

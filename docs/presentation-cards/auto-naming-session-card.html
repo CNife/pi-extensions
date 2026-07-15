@@ -250,7 +250,7 @@
     <h3>auto-naming：持续演进</h3>
     <ul class="dash">
       <li>第一条消息到后立即生成初始标题</li>
-      <li>每 N 个 turn 增量刷新——只看新内容，不重复总结</li>
+      <li>每 N 个 turn 周期刷新——纵观整段对话重新提炼</li>
       <li>标题随对话逐步收敛到真实主题</li>
     </ul>
   </section>
@@ -287,7 +287,7 @@
 <section>
   <h2>核心机制</h2>
   <div class="callout">
-    增量刷新：每次只总结自上次命名后的新对话内容（基于 session entry id 追踪），不会把整段历史丢给 LLM 重新生成。
+    全弧线刷新：每次综合整段对话重新提炼标题，让标题反映会话全貌而非最近片段；无 cursor 状态，会话重载后不会重放已处理消息。
   </div>
   <ul class="dash">
     <li><span class="hl">首条触发</span>——第一条 user message 到达后立即生成初始标题，不等待 agent 回合</li>
