@@ -8,6 +8,7 @@
     "check:fix": "npx biome check --write ./packages",
     "format": "npx biome format --write ./packages",
     "check:unsafe": "npx biome check --write --unsafe ./packages",
+    "proto:timing": "npx tsx packages/auto-naming-session/prototype/first-title-timing/index.ts",
     "prepare": "husky || true"
   },
   "lint-staged": {

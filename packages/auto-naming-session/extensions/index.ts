@@ -7,6 +7,12 @@ import {
   type ExtensionContext,
   getAgentDir,
 } from "@earendil-works/pi-coding-agent";
+import {
+  buildFullTranscript,
+  buildFullTranscriptWithPending,
+  hasAutoNamingTitle,
+  shouldRefresh,
+} from "./transcript.ts";
 
 // ──── Config ────────────────────────────────────────────────────
 
@@ -125,15 +131,12 @@ function loadConfig(): AutoNamingConfig | null {
 // ──── State ────────────────────────────────────────────────────
 
 export type AutoNamingState = {
-  /** 上次命名时记录的最后 entry ID，用于增量上下文 */
-  lastEntryId: string | null;
-  /** 是否已生成过首标题 */
+  /** 是否已生成过首标题（session_start 时从 hasAutoNamingTitle 派生） */
   firstTitleGenerated: boolean;
 };
 
 function createInitialState(): AutoNamingState {
   return {
-    lastEntryId: null,
     firstTitleGenerated: false,
   };
 }
@@ -142,7 +145,6 @@ function createInitialState(): AutoNamingState {
 
 interface AutoNamingEntry {
   title: string;
-  lastEntryId: string | null;
   timestamp: number;
 }
 
@@ -174,51 +176,9 @@ function isTitleManuallyChanged(
   return currentName !== lastEntry.title;
 }
 
-// ──── Transcript Building ────────────────────────────────────────
-
-function messageContentToText(
-  content: string | Array<{ type: string; text?: string }>,
-): string {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content
-      .filter((c): c is { type: "text"; text: string } => c.type === "text")
-      .map((c) => c.text)
-      .join(" ");
-  }
-  return "";
-}
-
-function buildTranscript(
-  ctx: ExtensionContext,
-  lastEntryId: string | null,
-): string | null {
-  const branch = ctx.sessionManager.getBranch();
-
-  let started = lastEntryId === null;
-  const parts: string[] = [];
-
-  for (const entry of branch) {
-    if (!started) {
-      if (entry.id === lastEntryId) {
-        started = true;
-      }
-      continue;
-    }
-
-    if (entry.type === "message" && entry.message) {
-      if (entry.message.role === "user" || entry.message.role === "assistant") {
-        const text = messageContentToText(entry.message.content);
-        if (text) {
-          parts.push(`${entry.message.role}: ${text}`);
-        }
-      }
-    }
-  }
-
-  if (parts.length === 0) return null;
-  return parts.join("\n\n");
-}
+// ──── Title Generation ──────────────────────────────────────────
+// Transcript 构建逻辑（buildFullTranscript / buildFullTranscriptWithPending /
+// shouldRefresh / hasAutoNamingTitle）已提取到 ./transcript.ts 作为可测纯函数。
 
 function parseModelRef(
   ref: string,
@@ -313,17 +273,14 @@ async function generateTitle(
 
 function applyTitle(
   pi: ExtensionAPI,
-  ctx: ExtensionContext,
   state: AutoNamingState,
   title: string,
 ): void {
   pi.setSessionName(title);
   pi.appendEntry("auto-naming-title", {
     title,
-    lastEntryId: state.lastEntryId,
     timestamp: Date.now(),
   });
-  state.lastEntryId = ctx.sessionManager.getLeafId() ?? null;
   state.firstTitleGenerated = true;
 }
 
@@ -357,25 +314,24 @@ export default function (pi: ExtensionAPI) {
   const state = createInitialState();
 
   pi.on("session_start", async (_event, ctx) => {
-    const lastEntry = findLatestAutoNamingTitle(ctx);
-    state.lastEntryId = lastEntry?.lastEntryId ?? null;
-    state.firstTitleGenerated = lastEntry !== undefined;
+    state.firstTitleGenerated = hasAutoNamingTitle(
+      ctx.sessionManager.getBranch(),
+    );
   });
 
   pi.on("agent_end", async (_event, ctx) => {
-    const msgCount = countMessagesSince(ctx, state.lastEntryId);
-    if (!shouldGenerateTitle(msgCount, config.auto_refresh_turns)) return;
+    const branch = ctx.sessionManager.getBranch();
+    if (!shouldRefresh(branch, config.auto_refresh_turns)) return;
 
-    const currentName = pi.getSessionName();
     const lastEntry = findLatestAutoNamingTitle(ctx);
-    if (isTitleManuallyChanged(currentName, lastEntry)) return;
+    if (isTitleManuallyChanged(pi.getSessionName(), lastEntry)) return;
 
     try {
-      const transcript = buildTranscript(ctx, state.lastEntryId);
+      const transcript = buildFullTranscript(branch);
       if (!transcript) return;
 
       const title = await generateTitle(ctx, config, transcript, true);
-      if (title) applyTitle(pi, ctx, state, title);
+      if (title) applyTitle(pi, state, title);
     } catch (err) {
       ctx.ui.notify(
         `Error: ${err instanceof Error ? err.message : String(err)}`,
@@ -384,65 +340,24 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
-  // 首条 user message 立即生成标题
+  // 首条 user message 立即生成标题（方案 B：message_end 时当前消息尚未 append）
   pi.on("message_end", async (event, ctx) => {
     if (!event.message || event.message.role !== "user") return;
     if (state.firstTitleGenerated) return;
 
     try {
-      // 直接用 event.message 构建 transcript（此时 message 尚未进入 branch）
-      const text = messageContentToText(event.message.content);
-      if (!text) return;
+      // pi 先发 message_end 事件给扩展，后 appendMessage 持久化，故 branch 不含
+      // 当前消息；用 buildFullTranscriptWithPending 拼接全量 branch + 当前消息。
+      const transcript = buildFullTranscriptWithPending(
+        ctx.sessionManager.getBranch(),
+        event.message,
+      );
+      if (!transcript) return;
 
-      const transcript = `user: ${text}`;
       const title = await generateTitle(ctx, config, transcript, false);
-      if (title) applyTitle(pi, ctx, state, title);
+      if (title) applyTitle(pi, state, title);
     } catch {
       // 首次生成失败不阻塞，等 agent_end 再试
     }
   });
-}
-
-/** 统计 lastEntryId 之后的 user + assistant 消息数量 */
-function countMessagesSince(
-  ctx: {
-    sessionManager: {
-      getBranch: () => Array<{
-        type: string;
-        id?: string;
-        message?: { role: string };
-      }>;
-    };
-  },
-  lastEntryId: string | null,
-): number {
-  const branch = ctx.sessionManager.getBranch();
-  let started = lastEntryId === null;
-  let count = 0;
-
-  for (const entry of branch) {
-    if (!started) {
-      if (entry.id === lastEntryId) {
-        started = true;
-      }
-      continue;
-    }
-    if (
-      entry.type === "message" &&
-      entry.message &&
-      (entry.message.role === "user" || entry.message.role === "assistant")
-    ) {
-      count++;
-    }
-  }
-  return count;
-}
-
-/** 判断是否应该触发标题生成。基于消息数累积阈值 */
-export function shouldGenerateTitle(
-  messageCount: number,
-  autoRefreshTurns: number | null,
-): boolean {
-  if (autoRefreshTurns === null) return false;
-  return messageCount >= autoRefreshTurns;
 }
