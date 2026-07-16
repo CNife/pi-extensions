@@ -94,6 +94,22 @@ function readConfigApiUrl(): string | undefined {
   }
 }
 
+function readConfigApiKey(): string | undefined {
+  try {
+    if (!existsSync(CONFIG_PATH)) return undefined;
+    const parsed = JSON.parse(readFileSync(CONFIG_PATH, "utf8")) as Record<
+      string,
+      unknown
+    >;
+    const candidate = parsed.apiKey ?? parsed.api_key;
+    return typeof candidate === "string" && candidate.trim()
+      ? candidate.trim()
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 // ============================================================================
 // resolveConfig (pure logic, no backend)
 // ============================================================================
@@ -125,7 +141,8 @@ test("resolveConfig: no env -> default or config.json apiUrl, no apiKey", () => 
     const config = resolveConfig();
     const expected = readConfigApiUrl() ?? "http://127.0.0.1:14242";
     strictEqual(config.apiUrl, expected);
-    strictEqual(config.apiKey, undefined);
+    const expectedApiKey = readConfigApiKey();
+    strictEqual(config.apiKey, expectedApiKey);
   } finally {
     restoreEnv();
   }
