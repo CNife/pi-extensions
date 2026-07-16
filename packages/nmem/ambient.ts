@@ -7,11 +7,13 @@
  */
 
 import { basename } from "node:path";
-import type {
-  ExtensionAPI,
-  ExtensionContext,
-} from "@earendil-works/pi-coding-agent";
-import { NmemError, nmemRequest, resolveConfig } from "./client.ts";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import {
+  NmemError,
+  nmemRequest,
+  resolveConfig,
+  stringValue,
+} from "./client.ts";
 
 // ============================================================================
 // Constants
@@ -81,10 +83,6 @@ function hostLabel(): string {
 
 function pluginVersion(): string {
   return process.env.NMEM_PLUGIN_VERSION?.trim() || DEFAULT_PLUGIN_VERSION;
-}
-
-function stringValue(value: unknown): string | undefined {
-  return typeof value === "string" ? value.trim() || undefined : undefined;
 }
 
 function truncate(text: string): string {

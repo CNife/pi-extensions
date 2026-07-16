@@ -57,7 +57,7 @@ function readSharedConfig(): JsonObject {
   }
 }
 
-function stringValue(value: unknown): string | undefined {
+export function stringValue(value: unknown): string | undefined {
   return typeof value === "string" ? value.trim() || undefined : undefined;
 }
 
@@ -391,7 +391,8 @@ export async function nmemReadThread(
 
     let budgetHit = false;
 
-    for (const raw of rawMessages) {
+    for (let i = 0; i < rawMessages.length; i++) {
+      const raw = rawMessages[i];
       const content = String(raw.content ?? "");
       const contentLen = content.length;
 
@@ -400,8 +401,14 @@ export async function nmemReadThread(
         break;
       }
 
+      // Spec #77: index maps from REST order_index; fall back to the
+      // position-relative index within the thread (currentOffset + batch index).
+      const index =
+        typeof raw.order_index === "number"
+          ? raw.order_index
+          : currentOffset + i;
       messages.push({
-        index: currentOffset + messages.length,
+        index,
         role: String(raw.role ?? ""),
         content,
       });
