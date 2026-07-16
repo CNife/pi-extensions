@@ -48,6 +48,16 @@ OpenAPI schema 是 FastAPI 风格（含 `HTTPValidationError` schema），但后
 
 → #72 决策输入：option (d) 技术可行但需两步路径（name→id→关联）；需在 grilling 中权衡 (d) 的完整 upsert 一致性 vs (a/b/c) 的简单性（throw/标注/移除 labels 参数）。
 
+> **#72 实测校正（2026-07-16，grilling 阶段）**：上文「`POST /memories`...labels 生效」（本节 bullet）表述模糊，实测澄清——
+>
+> - POST on **create**（id 缺失）：labels **set** 语义（设为这组）。
+> - POST on **upsert**（id 已存在）：labels **add** 语义（追加，非 set）；响应 `assigned_labels` 只报「本次操作分配的」labels，非 memory 全部 labels，易误导。
+> - 后端**无任何端点能一步 set 已有 memory 的 labels**（要 set 需 full diff：GET 现有 -> DELETE 多余 -> POST 新增）。
+> - **nmem CLI `m update` 无 labels 参数**（仅 title/content/importance/unit-type/space），全局无 label 命令；唯一 labels 入口是 `m add -l`（新建时设）。即整个 nmem 生态（后端 PATCH + CLI `m update`）都不支持更新已有 memory 的 labels。
+> - 实测 `DELETE /memories/{id}`、`DELETE /labels/{id}` 端点可用（本表/r3 主体未列）。
+>
+> **#72 最终决策**：labels = create-time 初始标注，update 不碰（对齐 nmem 能力边界），非空 labels on update -> `warnings` 不 throw。详见 [#72 resolution](https://github.com/CNife/pi-extensions/issues/72#issuecomment-4987912111)。
+
 ## 各端点权威 schema（OpenAPI + 运行时）
 
 ### POST /memories/search

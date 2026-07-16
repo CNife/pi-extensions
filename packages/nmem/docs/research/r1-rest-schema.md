@@ -163,7 +163,7 @@
 |---|---|---|
 | memories `total` | `array.length` | 返回条数，非总匹配数（REST 无 total 字段） |
 | memories `score` | 元素级 `similarity_score` | 直接取 |
-| memories `labels` | **不可用** | search 端点不返回；统一返回 `[]` |
+| memories `labels` | **字段已移除（#73）** | search 不返回 labels；不再作为返回字段（仅 `GET /memories/{id}` 返回 `label_ids`，N+1 enrichment 否决） |
 | memories 其余字段 | `memory.{id,title,content,importance,unit_type,created_at}` | memory 子对象 |
 | threads `total` | 顶层 `total_found` | CLI 的 `total` 由此映射 |
 | threads `matches` | 元素级 `total_matches` | CLI 的 `matches` 由此映射 |
