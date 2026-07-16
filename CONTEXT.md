@@ -43,6 +43,24 @@ LLM 服务提供方（如 OpenAI、Anthropic）。扩展解析 model 时需要�
 **model**：
 provider 下的具体模型（如 `gpt-4o`、`claude-3-5-sonnet`）。扩展通过 model registry 查询。
 
+## nmem 集成
+
+**nmem 后端**：
+localhost REST 服务（默认 http://127.0.0.1:14242），记忆/会话/上下文的 single source of truth。pi-nmem 扩展的后端。
+_避免_：nmem CLI（CLI 是后端的命令行客户端）
+
+**nowledge-mem-pi**：
+被 pi-nmem 替代的现有 pi 插件，由 extension（自动同步 + 启动注入）和 5 个 skill（写死裸 `nmem --json` 调用）组成。
+_避免_：nmem 插件（歧义）
+
+**ambient sync**：
+扩展在会话生命周期中自动把 pi 会话同步为 nmem 线程，LLM 不参与。
+_避免_：手动导入
+
+**Context Bundle**：
+nmem 后端 `GET /context/bundle` 返回的启动上下文包，含 owner 身份、agent 身份、活跃 space、rules、working memory。pi-nmem 在 session_start 注入。
+_避免_：working memory（是其子部分）
+
 ## Example Dialogue
 
 > **Dev**: 加个新扩展显示 token 用量。

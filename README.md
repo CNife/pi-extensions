@@ -14,6 +14,7 @@ Refer to [CONTEXT.md](CONTEXT.md) for the project's domain glossary.
 | [`@cnife/pi-execute-python`](#execute-python) | Extension | 用 uv 执行 Python，实时流式输出，自动依赖管理 |
 | [`@cnife/pi-inference-speed`](#inference-speed) | Extension | footer 显示推理速度 TPS 和首 token 延迟 TTFT |
 | [`@cnife/pi-miscs`](#miscs) | Extension | 调试 & 快捷退出等小工具 |
+| [`@cnife/pi-nmem`](#nmem) | Extension | 用 pi 原生 tool 打 nmem 后端 REST（搜索/深读/保存记忆），替代 nowledge-mem-pi，不依赖 nmem CLI |
 
 ### Deprecated packages
 
@@ -40,6 +41,7 @@ pi install npm:@cnife/pi-auto-naming-session
 pi install npm:@cnife/pi-execute-python
 pi install npm:@cnife/pi-inference-speed
 pi install npm:@cnife/pi-miscs
+pi install npm:@cnife/pi-nmem
 ```
 
 ---
@@ -74,6 +76,14 @@ pi install npm:@cnife/pi-miscs
 |------|------|
 | `debug-request-body` | 设置 `PI_DEBUG_REQUEST_BODY=<dir>` 后，将每次 provider 请求体 dump 到指定目录 |
 | `exit` | 输入 `exit` 快捷退出 pi |
+
+### nmem
+
+替代 [nowledge-mem-pi](https://github.com/nowledge-labs/nowledge-mem-pi) 的 pi 扩展，用 pi 原生 custom tool 把 nmem 后端能力暴露给 LLM，内部纯打 nmem 后端 REST，不依赖 nmem CLI。
+
+- **3 个 tool**：`nmem_search`（搜记忆/会话）、`nmem_read_thread`（深读会话全文、自动分段）、`nmem_save_memory`（upsert 记忆，结构化参数零转义）
+- **ambient**：会话自动同步为 nmem 线程 + 启动注入 Context Bundle
+- 运行时只需 nmem 后端 REST 可达；低频操作仍可用裸 `nmem` CLI
 
 ---
 
