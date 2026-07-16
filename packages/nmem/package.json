@@ -5,7 +5,7 @@
   "keywords": [
     "pi-package"
   ],
-  "description": "Pi-native custom tools for the nmem backend - search memories and threads via REST, no CLI",
+  "description": "Pi-native custom tools for the nmem backend - search memories and threads, read threads, save memories via REST, no CLI",
   "homepage": "https://github.com/CNife/pi-extensions#readme",
   "bugs": {
     "url": "https://github.com/CNife/pi-extensions/issues"
@@ -23,6 +23,7 @@
   "files": [
     "extensions",
     "client.ts",
+    "ambient.ts",
     "README.md"
   ],
   "pi": {

@@ -1,21 +1,27 @@
 /**
  * nmem extension - thin wrapper entry.
  *
- * Registers the nmem_search tool and delegates to the REST client deep module
- * (../client.ts). Owns no logic beyond parameter unpacking and shaping the
- * AgentToolResult. The deep module throws NmemError on any failure; per the pi
- * custom-tool error contract (throw -> isError:true, return -> isError:false)
- * we let those propagate instead of catching, so the LLM sees real errors.
+ * Registers three tools (nmem_search, nmem_read_thread, nmem_save_memory)
+ * and delegates to the REST client deep module (../client.ts). Owns no logic
+ * beyond parameter unpacking and shaping the AgentToolResult. The deep
+ * module throws NmemError on any failure; per the pi custom-tool error
+ * contract (throw -> isError:true, return -> isError:false) we let those
+ * propagate instead of catching, so the LLM sees real errors.
  *
- * Sync and startup context injection (forked from nowledge-mem-pi) land in a
- * later ticket (#78); this entry only registers the search tool.
+ * Sync and startup context injection (forked from nowledge-mem-pi) are wired
+ * in via installAmbient (../ambient.ts).
  */
 
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { installAmbient } from "../ambient.ts";
 import {
   type MemoriesSearchResult,
+  nmemReadThread,
+  nmemSaveMemory,
   nmemSearch,
+  type ReadThreadResult,
+  type SavedMemoryResult,
   type SearchKind,
   type ThreadsSearchResult,
 } from "../client.ts";
@@ -73,6 +79,110 @@ const nmemSearchTool = defineTool({
   },
 });
 
+const nmemReadThreadTool = defineTool({
+  name: "nmem_read_thread",
+  label: "Read thread",
+  description: [
+    "Read the full content of a conversation thread by its thread_id.",
+    "Auto-paginates with character-budget segmentation (fetches messages",
+    "until ~8000 chars total). Follow the returned `offset=N` hint to",
+    "continue reading. Do not guess or fabricate message counts.",
+  ].join(" "),
+  promptGuidelines: [
+    "Read full threads surfaced by nmem_search; auto-paginated, follow the returned offset=N hint, do not guess counts",
+    "Use when a thread hit in nmem_search contains useful information that was not fully shown",
+  ],
+  parameters: Type.Object({
+    thread_id: Type.String({
+      description: "Thread ID (pi- prefix) to read",
+    }),
+    offset: Type.Optional(
+      Type.Number({
+        description: "Message offset to start from (default 0)",
+      }),
+    ),
+  }),
+
+  async execute(_toolCallId, params) {
+    // NmemError propagates -> pi sets isError:true.
+    const result = await nmemReadThread(params.thread_id, params.offset);
+    const text = result.note
+      ? `${result.note}\n${JSON.stringify(result, null, 2)}`
+      : JSON.stringify(result, null, 2);
+    return {
+      content: [{ type: "text" as const, text }],
+      details: result as ReadThreadResult,
+    };
+  },
+});
+
+const nmemSaveMemoryTool = defineTool({
+  name: "nmem_save_memory",
+  label: "Save memory",
+  description: [
+    "Save a durable memory (or update an existing one) to the nmem backend.",
+    "Creates a new memory when id is empty/missing; updates (PATCH) when id",
+    "is provided. Labels are create-time init annotation only - existing",
+    "memory labels will not change on update.",
+  ].join(" "),
+  promptGuidelines: [
+    "Save durable decisions, preferences, procedures, and learnings when the session yields them - not routine fixes or in-progress work",
+    "Search first (nmem_search) to avoid creating duplicate memories",
+    "Non-empty id updates, empty/missing id creates",
+    "One strong memory beats many weak ones - consolidate related knowledge",
+    "Labels are create-time init annotation only; existing memory labels will not change on update",
+  ],
+  parameters: Type.Object({
+    title: Type.String({
+      description: "Memory title",
+    }),
+    content: Type.String({
+      description: "Memory content body",
+    }),
+    unit_type: Type.Optional(
+      Type.String({
+        description: "Unit type (e.g. fact, decision, procedure)",
+      }),
+    ),
+    importance: Type.Optional(
+      Type.Number({
+        description: "Importance score (0-10)",
+      }),
+    ),
+    labels: Type.Optional(
+      Type.Array(Type.String(), {
+        description: "Labels/tags (create-time only, ignored on update)",
+      }),
+    ),
+    id: Type.Optional(
+      Type.String({
+        description: "Memory ID for updating an existing memory",
+      }),
+    ),
+  }),
+
+  async execute(_toolCallId, params) {
+    const { title, content, unit_type, importance, labels, id } = params;
+    // NmemError propagates -> pi sets isError:true.
+    const result = await nmemSaveMemory(title, content, {
+      unit_type,
+      importance,
+      labels,
+      id,
+    });
+    const text = result.warnings?.length
+      ? `${JSON.stringify(result, null, 2)}\n${result.warnings.join("\n")}`
+      : JSON.stringify(result, null, 2);
+    return {
+      content: [{ type: "text" as const, text }],
+      details: result as SavedMemoryResult,
+    };
+  },
+});
+
 export default function (pi: ExtensionAPI) {
   pi.registerTool(nmemSearchTool);
+  pi.registerTool(nmemReadThreadTool);
+  pi.registerTool(nmemSaveMemoryTool);
+  installAmbient(pi);
 }

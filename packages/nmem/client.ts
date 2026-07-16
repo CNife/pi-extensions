@@ -313,3 +313,207 @@ export async function nmemSearch(
   }
   return { returned: memories.length, memories };
 }
+
+// ============================================================================
+// nmemReadThread
+// ============================================================================
+
+export interface ThreadMessage {
+  index: number;
+  role: string;
+  content: string;
+}
+
+export interface ReadThreadResult {
+  title: string;
+  created_at: string;
+  total_messages: number;
+  offset: number;
+  returned: number;
+  messages: ThreadMessage[];
+  hint: string;
+  note?: string;
+}
+
+// Raw REST shape for thread detail endpoint.
+interface RawThreadMessage {
+  order_index?: number;
+  role?: string;
+  content?: string;
+}
+interface RawThreadResponse {
+  thread?: {
+    id?: string;
+    title?: string;
+    created_at?: string;
+    source?: string;
+    space_id?: string;
+    message_count?: number;
+  };
+  total_messages?: number;
+  messages?: RawThreadMessage[];
+}
+
+/**
+ * Read a thread's messages with character-length budget segmentation.
+ *
+ * Fetches messages batched (limit=10) starting at `offset`, accumulating whole
+ * messages until the next message would exceed ~8000 total characters.
+ * Always returns at least one message per page for forward progress.
+ */
+export async function nmemReadThread(
+  threadId: string,
+  offset = 0,
+): Promise<ReadThreadResult> {
+  const BUDGET = 8000;
+  const LIMIT = 10;
+  let currentOffset = offset;
+  const messages: ThreadMessage[] = [];
+  let totalChars = 0;
+  let title = "";
+  let createdAt = "";
+  let totalMessages = 0;
+
+  for (;;) {
+    const data = await nmemRequest<RawThreadResponse>(
+      "GET",
+      `/threads/${encodeURIComponent(threadId)}`,
+      { query: { offset: currentOffset, limit: LIMIT } },
+    );
+
+    const thread = data.thread ?? {};
+    title = String(thread.title ?? "");
+    createdAt = String(thread.created_at ?? "");
+    totalMessages = Number(data.total_messages ?? 0);
+
+    const rawMessages = data.messages ?? [];
+    if (rawMessages.length === 0) break;
+
+    let budgetHit = false;
+
+    for (const raw of rawMessages) {
+      const content = String(raw.content ?? "");
+      const contentLen = content.length;
+
+      if (totalChars + contentLen > BUDGET && messages.length > 0) {
+        budgetHit = true;
+        break;
+      }
+
+      messages.push({
+        index: currentOffset + messages.length,
+        role: String(raw.role ?? ""),
+        content,
+      });
+      totalChars += contentLen;
+    }
+
+    currentOffset += rawMessages.length;
+    if (budgetHit || rawMessages.length < LIMIT) break;
+  }
+
+  if (messages.length === 0 && totalMessages === 0) {
+    return {
+      title: "",
+      created_at: "",
+      total_messages: 0,
+      offset,
+      returned: 0,
+      messages: [],
+      hint: "",
+      note: "该线程无消息",
+    };
+  }
+
+  const returned = messages.length;
+  const remaining = totalMessages - offset - returned;
+  const hint =
+    remaining <= 0
+      ? `已到末尾（共 ${totalMessages} 条）`
+      : `还有 ${remaining} 条未读，offset=${offset + returned} 继续`;
+
+  return {
+    title,
+    created_at: createdAt,
+    total_messages: totalMessages,
+    offset,
+    returned,
+    messages,
+    hint,
+  };
+}
+
+// ============================================================================
+// nmemSaveMemory
+// ============================================================================
+
+interface RawMemoryResponse {
+  id?: string;
+  memory?: { id?: string };
+}
+
+export interface SavedMemoryResult {
+  action: "created" | "updated";
+  id: string;
+  updated_fields?: string[];
+  warnings?: string[];
+}
+
+/**
+ * Upsert a memory: POST (create) when `id` is empty/missing, PATCH (update)
+ * when `id` is non-empty. Labels are create-time init annotation only;
+ * PATCH ignores them and emits a warning if non-empty labels were passed.
+ * 404 -> throws NmemError("not_found"); 400/422 -> throws "bad_request".
+ */
+export async function nmemSaveMemory(
+  title: string,
+  content: string,
+  opts?: {
+    unit_type?: string;
+    importance?: number;
+    labels?: string[];
+    id?: string;
+  },
+): Promise<SavedMemoryResult> {
+  const id = (opts?.id ?? "").trim();
+
+  if (!id) {
+    // POST — create
+    const body: Record<string, unknown> = { title, content };
+    if (opts?.unit_type !== undefined) body.unit_type = opts.unit_type;
+    if (opts?.importance !== undefined) body.importance = opts.importance;
+    if (opts?.labels !== undefined && opts.labels.length > 0)
+      body.labels = opts.labels;
+
+    const data = await nmemRequest<RawMemoryResponse>("POST", "/memories", {
+      body,
+    });
+    return { action: "created", id: String(data.memory?.id ?? data.id ?? "") };
+  }
+
+  // PATCH — update
+  const body: Record<string, unknown> = { title, content };
+  if (opts?.unit_type !== undefined) body.unit_type = opts.unit_type;
+  if (opts?.importance !== undefined) body.importance = opts.importance;
+  // labels intentionally omitted on PATCH
+
+  const updatedFields = Object.keys(body);
+
+  const data = await nmemRequest<RawMemoryResponse>(
+    "PATCH",
+    `/memories/${encodeURIComponent(id)}`,
+    { body },
+  );
+
+  const result: SavedMemoryResult = {
+    action: "updated",
+    id: String(data.id ?? id),
+    updated_fields: updatedFields,
+  };
+
+  if (opts?.labels !== undefined && opts.labels.length > 0) {
+    result.warnings = ["labels 未变更，nmem 后端限制"];
+  }
+
+  return result;
+}
