@@ -155,6 +155,8 @@
 
 > curl 直连后端 `http://127.0.0.1:14242`（nmem v0.10.27）验证。本节是 pi-nmem「纯打 REST」实现的实际数据源，§1-5 的 CLI 输出形状是 LLM-facing 的目标 schema（token 高效），REST 客户端模块负责两者间的字段映射。
 
+> **R3 校正（2026-07-16，[r3-rest-api-docs.md](./r3-rest-api-docs.md)）**：本节 curl 探测结论经 OpenAPI schema（`/openapi.json`, API v0.9.15, 276 paths；nmem CLI 现 0.10.28）+ 运行时二次验证，**全部维持正确**，仅 §7.4/§7.7 的错误体格式描述需从「FastAPI/Pydantic 标准」修正为「**axum/serde Rust 纯文本**」（后端是 Rust/axum 生成 FastAPI 风格 OpenAPI）。三处 OpenAPI 与运行时不符的关键点：(1) `offset` on search 运行时生效但 `MemorySearchRequest` 未声明；(2) 缺 `query` 运行时返回 `200 []` 非 422；(3) 422 错误体运行时是 `text/plain` 非 OpenAPI 声明的 JSON。实现以**运行时实测为准**。另发现独立 label 关联端点 `POST /memories/{id}/labels/{label_id}`（#72 option d）。
+
 ### 7.0 字段映射总表（REST -> spec schema）
 
 | spec schema 字段 | 真实 REST 位置 | 说明 |
