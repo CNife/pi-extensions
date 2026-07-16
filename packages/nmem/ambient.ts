@@ -257,6 +257,7 @@ function sessionId(ctx: ExtensionContext): string {
   };
   const id = manager.getSessionId?.();
   if (id) return id;
+  const file = manager.getSessionFile?.();
   if (file) return basename(file).replace(/\.jsonl$/i, "");
   return "unknown";
 }
@@ -276,6 +277,7 @@ function buildTitle(ctx: ExtensionContext, messages: ThreadMessage[]): string {
   if (name) return name;
   const firstUser = messages.find((msg) => msg.role === "user")?.content.trim();
   if (firstUser) return firstUser.slice(0, 120);
+  const cwd = manager.getCwd?.();
   return cwd
     ? `${hostLabel()} session - ${basename(cwd)}`
     : `${hostLabel()} session`;
