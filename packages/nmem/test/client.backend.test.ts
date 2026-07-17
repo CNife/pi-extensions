@@ -184,7 +184,7 @@ backendTest("save create (POST) -> action=created, id non-empty", async () => {
     "由 client.backend.test 创建，稍后清理",
     {
       unit_type: "fact",
-      importance: 3,
+      importance: 0.3,
       labels: ["qa-baseline"],
     },
   );

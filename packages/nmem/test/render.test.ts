@@ -42,7 +42,7 @@ const memoriesResult = {
       title: "Wayfinder 规划方法论",
       content: "计划，不执行",
       score: 0.9125,
-      importance: 9,
+      importance: 0.9,
       unit_type: "fact",
       created_at: "2026-07-13T11:02:56+00:00",
     },
@@ -51,7 +51,7 @@ const memoriesResult = {
       title: "OneReason 全切",
       content: "全切到 GitLab",
       score: 0.8245,
-      importance: 8,
+      importance: 0.8,
       unit_type: "decision",
       created_at: "2026-07-08T01:48:58+00:00",
     },
@@ -144,7 +144,7 @@ test("search memories expanded: field list per memory, footer count", () => {
   ok(text.includes("[accent]fact"), `type value accent:\n${text}`);
   ok(text.includes("[accent]decision"), `type2 value accent:\n${text}`);
   // importance numeric toolOutput
-  ok(text.includes("[toolOutput]9/10"), `importance value 9/10:\n${text}`);
+  ok(text.includes("[toolOutput]0.90"), `importance value 0.90:\n${text}`);
   // footer count
   ok(text.includes("[dim]2 results"), `footer count:\n${text}`);
 });
@@ -275,7 +275,7 @@ test("save_memory expanded: field list (id/title/type/importance/updated/warning
     {
       ...saveArgs,
       unit_type: "decision",
-      importance: 9,
+      importance: 0.9,
     },
   );
   ok(text.includes("[dim]id"), `id label:\n${text}`);
@@ -287,7 +287,7 @@ test("save_memory expanded: field list (id/title/type/importance/updated/warning
   // value-type coloring
   ok(text.includes("[muted]nmem-abc-123"), `id value muted:\n${text}`);
   ok(text.includes("[accent]decision"), `type value accent:\n${text}`);
-  ok(text.includes("[toolOutput]9/10"), `importance value 9/10:\n${text}`);
+  ok(text.includes("[toolOutput]0.90"), `importance value 0.90:\n${text}`);
   // warning text shown as-is (not translated)
   ok(
     text.includes("labels 未变更，nmem 后端限制"),

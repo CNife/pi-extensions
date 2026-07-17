@@ -192,7 +192,7 @@ const nmemSaveMemoryTool = defineTool({
     ),
     importance: Type.Optional(
       Type.Number({
-        description: "Importance score (0-10)",
+        description: "Importance score (0.0-1.0)",
       }),
     ),
     labels: Type.Optional(
