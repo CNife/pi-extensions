@@ -31,7 +31,8 @@ let backendReachable = false;
 
 before(async () => {
   try {
-    await nmemRequest("GET", "/health");
+    // retry:false - probe fails fast when backend is down (skip path)
+    await nmemRequest("GET", "/health", { retry: false });
     backendReachable = true;
   } catch {
     backendReachable = false;
@@ -266,6 +267,7 @@ backendTest("nmemRequest unreachable host -> backend_unreachable", async () => {
   try {
     await nmemRequest("GET", "/openapi.json", {
       config: { apiUrl: "http://127.0.0.1:39999" },
+      retry: false, // error-mapping test; retry covered by withRetry unit tests
     });
     throw new Error("should have thrown");
   } catch (e) {
