@@ -55,7 +55,8 @@
 
 ## 错误与降级
 
-- **tool 层**：所有错误一律 throw → pi 设 `isError:true`，LLM 据结构化错误（错误码 + 消息 + 下一步建议）自纠正。错误码：`backend_unreachable` / `unauthorized` / `not_found` / `bad_request`（400 和 422）/ `server_error`。
+- **tool 层**：所有错误一律 throw -> pi 设 `isError:true`，LLM 据结构化错误（错误码 + 消息 + 下一步建议）自纠正。错误码：`timeout` / `backend_unreachable` / `unauthorized` / `not_found` / `bad_request`（400 和 422）/ `server_error`。
+- **重试**：REST 客户端默认对瞬时错误（`timeout` / `backend_unreachable` / `server_error`）自动重试 2 次（指数退避 + 抖动，固定 8s 超时），4xx 快速失败；调用方与 LLM 不感知。`nmem_save_memory` 新建记忆（POST /memories，非幂等）opt-out 不重试，超时提至 30s 吸收 embedding 冷启动。
 - **inject 层**：后端不可达时 `ctx.ui.notify` + guidance-only 兜底面具用户，不阻塞启动。
 
 ## 替代关系
