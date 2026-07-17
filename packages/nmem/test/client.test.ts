@@ -33,17 +33,18 @@ import {
 // Backend reachability guard
 // ============================================================================
 
-const BACKEND_URL = "http://127.0.0.1:14242";
 const CONFIG_PATH = `${homedir()}/.nowledge-mem/config.json`;
 
 let backendReachable = false;
 
 before(async () => {
   try {
-    const res = await fetch(`${BACKEND_URL}/openapi.json`, {
-      signal: AbortSignal.timeout(2000),
-    });
-    backendReachable = res.ok;
+    // Probe the REAL configured backend (env > config.json > default), not a
+    // hardcoded localhost. openapi.json requires auth (401 without key), so
+    // reuse nmemRequest which carries apiKey + maps errors. /health is lightweight.
+    // retry:false - probe fails fast when backend is down (skip path)
+    await nmemRequest("GET", "/health", { retry: false });
+    backendReachable = true;
   } catch {
     backendReachable = false;
   }
@@ -239,6 +240,7 @@ backendTest(
       () =>
         nmemRequest("GET", "/openapi.json", {
           config: { apiUrl: "http://127.0.0.1:39999" },
+          retry: false, // error-mapping test; retry covered by withRetry unit tests
         }),
       (err: unknown) => {
         ok(err instanceof NmemError);

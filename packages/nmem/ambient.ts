@@ -11,12 +11,7 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import {
-  NmemError,
-  nmemRequest,
-  resolveConfig,
-  stringValue,
-} from "./client.ts";
+import { NmemError, nmemRequest, stringValue } from "./client.ts";
 
 // ============================================================================
 // Constants
@@ -24,8 +19,11 @@ import {
 
 const MAX_MESSAGE_CHARS = 20_000;
 const FLUSH_DELAY_MS = 750;
-const API_TIMEOUT_MS = 8_000;
-const DEFAULT_PLUGIN_VERSION = "0.8.3";
+// tool_version 随 POST /threads 上报后端并持久化（见 r3）。带工具名前缀以区分
+// nowledge-mem-pi（裸号 0.8.3）与 nmem CLI：三者 source 均为 "pi"，tool_version
+// 是唯一区分点，裸号会混淆（已实测后端只存储不解析，前缀安全）。与
+// package.json version 保持同步。
+const DEFAULT_PLUGIN_VERSION = "pi-nmem/0.2.0";
 
 // ============================================================================
 // Types
@@ -292,82 +290,39 @@ function shouldSync(messages: ThreadMessage[]): boolean {
 }
 
 // ============================================================================
-// Non-throwing postJson (port verbatim from fork)
+// Non-throwing postJson adapter (delegates to nmemRequest, inherits retry)
 // ============================================================================
 
-function remoteApiFallbackUrls(url: string): string[] {
-  const urls: string[] = [];
-  const add = (candidate: string) => {
-    if (!urls.includes(candidate)) urls.push(candidate);
-  };
-  const parsed = new URL(url);
-  const path = parsed.pathname || "";
-  if (path === "/remote-api") {
-    parsed.pathname = "/";
-    add(parsed.toString());
-  } else if (path.startsWith("/remote-api/")) {
-    parsed.pathname = path.slice("/remote-api".length);
-    add(parsed.toString());
-  }
-  return urls;
-}
-
+/**
+ * Ambient sync POST, non-throwing: delegates to nmemRequest (which retries
+ * transient faults) and flattens any NmemError into {ok:false, status, data} so
+ * the caller never sees a throw. POST /threads and /threads/{id}/append are
+ * idempotent (409 fallback / idempotency_key), so retry is safe here.
+ */
 async function postJson(
   path: string,
   body: JsonObject,
 ): Promise<{ ok: boolean; status: number; data: unknown }> {
-  const config = resolveConfig();
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (config.apiKey) {
-    headers.Authorization = `Bearer ${config.apiKey}`;
-    headers["X-NMEM-API-Key"] = config.apiKey;
-  }
-  const requestBody = JSON.stringify(body);
-  let urls: string[];
   try {
-    urls = [`${config.apiUrl}${path}`];
-    urls.push(...remoteApiFallbackUrls(urls[0]));
-  } catch {
+    const data = await nmemRequest("POST", path, { body });
+    // status is a placeholder on the ok path (nmemRequest returns only the
+    // parsed body); consumers read status solely on the error path, where
+    // NmemError.status carries the real HTTP code.
+    return { ok: true, status: 200, data };
+  } catch (error) {
+    if (error instanceof NmemError) {
+      return {
+        ok: false,
+        status: error.status ?? 0,
+        data: { detail: error.message },
+      };
+    }
     return {
       ok: false,
       status: 0,
-      data: {
-        error: "Invalid NMEM_API_URL or apiUrl in ~/.nowledge-mem/config.json",
-      },
+      data: { error: error instanceof Error ? error.message : String(error) },
     };
   }
-
-  let last: { ok: boolean; status: number; data: unknown } = {
-    ok: false,
-    status: 0,
-    data: { error: "request was not sent" },
-  };
-  for (const url of urls) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
-    try {
-      const response = await fetch(url, {
-        method: "POST",
-        headers,
-        body: requestBody,
-        signal: controller.signal,
-      });
-      const data = await response.json().catch(() => ({}));
-      last = { ok: response.ok, status: response.status, data };
-      if (response.ok) return last;
-    } catch (error) {
-      last = {
-        ok: false,
-        status: 0,
-        data: { error: error instanceof Error ? error.message : String(error) },
-      };
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
-  return last;
 }
 
 // ============================================================================
