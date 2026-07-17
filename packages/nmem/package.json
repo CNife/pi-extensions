@@ -1,6 +1,6 @@
 {
   "name": "@cnife/pi-nmem",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": false,
   "keywords": [
     "pi-package"
@@ -24,6 +24,8 @@
     "extensions",
     "client.ts",
     "ambient.ts",
+    "render.ts",
+    "toon.ts",
     "README.md"
   ],
   "pi": {

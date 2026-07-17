@@ -19,7 +19,8 @@
       "rumdl fmt"
     ],
     "**/package.json": [
-      "bash -c 'npm install --package-lock-only'"
+      "bash -c 'npm install --package-lock-only && git add package-lock.json'",
+      "node scripts/check-package-files.mjs"
     ]
   },
   "devDependencies": {
