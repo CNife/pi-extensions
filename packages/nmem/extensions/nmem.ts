@@ -14,6 +14,7 @@
 
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { installAmbient } from "../ambient.ts";
 import {
   type MemoriesSearchResult,
@@ -25,6 +26,14 @@ import {
   type SearchKind,
   type ThreadsSearchResult,
 } from "../client.ts";
+import {
+  renderReadThreadResult,
+  renderSaveMemoryResult,
+  renderSearchResult,
+  type SaveMemoryArgs,
+  type SearchArgs,
+} from "../render.ts";
+import { toToonText } from "../toon.ts";
 
 const nmemSearchTool = defineTool({
   name: "nmem_search",
@@ -64,18 +73,37 @@ const nmemSearchTool = defineTool({
       kind as SearchKind | undefined,
       limit,
     );
-    const text = result.note
-      ? `${result.note}\n${JSON.stringify(result, null, 2)}`
-      : JSON.stringify(result, null, 2);
     return {
       content: [
         {
           type: "text" as const,
-          text,
+          text: toToonText(result),
         },
       ],
       details: result as MemoriesSearchResult | ThreadsSearchResult,
     };
+  },
+
+  renderCall(args, theme) {
+    const kind = args.kind ? ` · ${args.kind}` : "";
+    return new Text(
+      `${theme.fg("toolTitle", theme.bold("nmem_search"))}${kind} ${theme.fg("dim", `"${args.query}"`)}`,
+      0,
+      0,
+    );
+  },
+
+  renderResult(result, { expanded }, theme, context) {
+    return new Text(
+      renderSearchResult(
+        result,
+        { expanded, isError: context.isError },
+        theme,
+        context.args as SearchArgs | undefined,
+      ),
+      0,
+      0,
+    );
   },
 });
 
@@ -106,13 +134,31 @@ const nmemReadThreadTool = defineTool({
   async execute(_toolCallId, params) {
     // NmemError propagates -> pi sets isError:true.
     const result = await nmemReadThread(params.thread_id, params.offset);
-    const text = result.note
-      ? `${result.note}\n${JSON.stringify(result, null, 2)}`
-      : JSON.stringify(result, null, 2);
+    const text = toToonText(result);
     return {
       content: [{ type: "text" as const, text }],
       details: result as ReadThreadResult,
     };
+  },
+
+  renderCall(args, theme) {
+    return new Text(
+      `${theme.fg("toolTitle", theme.bold("nmem_read_thread"))} ${theme.fg("dim", `· ${args.thread_id}`)}`,
+      0,
+      0,
+    );
+  },
+
+  renderResult(result, { expanded }, theme, context) {
+    return new Text(
+      renderReadThreadResult(
+        result,
+        { expanded, isError: context.isError },
+        theme,
+      ),
+      0,
+      0,
+    );
   },
 });
 
@@ -170,13 +216,32 @@ const nmemSaveMemoryTool = defineTool({
       labels,
       id,
     });
-    const text = result.warnings?.length
-      ? `${JSON.stringify(result, null, 2)}\n${result.warnings.join("\n")}`
-      : JSON.stringify(result, null, 2);
+    const text = toToonText(result);
     return {
       content: [{ type: "text" as const, text }],
       details: result as SavedMemoryResult,
     };
+  },
+
+  renderCall(args, theme) {
+    return new Text(
+      `${theme.fg("toolTitle", theme.bold("nmem_save_memory"))} ${theme.fg("dim", `· ${args.title}`)}`,
+      0,
+      0,
+    );
+  },
+
+  renderResult(result, { expanded }, theme, context) {
+    return new Text(
+      renderSaveMemoryResult(
+        result,
+        { expanded, isError: context.isError },
+        theme,
+        context.args as SaveMemoryArgs | undefined,
+      ),
+      0,
+      0,
+    );
   },
 });
 
