@@ -66,7 +66,7 @@ const MOCK_SEARCH_MEMORIES = {
       content:
         "Wayfinder 是一种针对宽泛模糊目标的规划方法论，通过在 Issue 追踪器中创建共享地图（带 wayfinder:map 标签的 Issue）来规划决策。其核心原则是「计划，不执行」：工单解决决策点，当路线清晰后才转入执行。",
       score: 0.9125,
-      importance: 9,
+      importance: 0.9,
       unit_type: "fact",
       created_at: "2026-07-13T11:02:56+00:00",
     },
@@ -76,7 +76,7 @@ const MOCK_SEARCH_MEMORIES = {
       content:
         "onereason-backend-mono 仓 issue tracker 于 2026-07-09 从本地 Wayfinder(.wayfinder/)全切到 GitLab Issues(glab, gitlab.zhejianglab.com/onereason/onereason-backend-mono)。全切决策：放弃 Wayfinder 的 plan-don't-do，决策/实施/外部 incoming 都进 GitLab。",
       score: 0.8245,
-      importance: 9,
+      importance: 0.9,
       unit_type: "decision",
       created_at: "2026-07-08T01:48:58+00:00",
     },
@@ -86,7 +86,7 @@ const MOCK_SEARCH_MEMORIES = {
       content:
         "设计基于 LLM 的系统时，采用关键词检索和质量评估平衡效果与成本。记忆检索触发规则：在「建立上下文」阶段无条件调用 search-memory，依靠技能层过滤处理噪音。",
       score: 0.7712,
-      importance: 8,
+      importance: 0.8,
       unit_type: "fact",
       created_at: "2026-07-10T14:30:00+00:00",
     },
@@ -212,7 +212,7 @@ function render() {
     s.push(`    ${dim("score")}      ${valueColor.number(m.score.toFixed(4))}`);
     s.push(`    ${dim("type")}       ${valueColor.enum(m.unit_type)}`);
     s.push(
-      `    ${dim("importance")} ${valueColor.number(m.importance + "/10")}`,
+      `    ${dim("importance")} ${valueColor.number(m.importance.toFixed(2))}`,
     );
     s.push(`    ${dim("content")}    ${valueColor.text(m.content)}`);
     s.push("");
@@ -293,7 +293,7 @@ function render() {
     `  ${dim("content")}   ${valueColor.text("Final TUI render spec for 3 nmem tools: collapsed/expanded/error states, pi standard ThemeColor, value-type coloring, no emoji, no borders.")}`,
   );
   s.push(`  ${dim("type")}      ${valueColor.enum("decision")}`);
-  s.push(`  ${dim("importance")} ${valueColor.number("8/10")}`);
+  s.push(`  ${dim("importance")} ${valueColor.number("0.80")}`);
   s.push("");
 
   // ------------------------------------------------------------------
@@ -314,7 +314,7 @@ function render() {
     `  ${dim("title")}     ${valueColor.text(MOCK_SAVE_MEMORY_UPDATE.title)}`,
   );
   s.push(`  ${dim("type")}      ${valueColor.enum("decision")}`);
-  s.push(`  ${dim("importance")} ${valueColor.number("9/10")}`);
+  s.push(`  ${dim("importance")} ${valueColor.number("0.90")}`);
   s.push(
     `  ${dim("updated")}   ${valueColor.text("title, content, importance")}`,
   );
@@ -340,7 +340,7 @@ function render() {
     `  ${dim("title")}     ${valueColor.text(MOCK_SAVE_MEMORY_WARNING.title)}`,
   );
   s.push(`  ${dim("type")}      ${valueColor.enum("decision")}`);
-  s.push(`  ${dim("importance")} ${valueColor.number("7/10")}`);
+  s.push(`  ${dim("importance")} ${valueColor.number("0.70")}`);
   s.push(`  ${dim("updated")}   ${valueColor.text("title, content")}`);
   s.push(
     `  ${dim("warning")}   ${valueColor.text("labels 未变更，nmem 后端限制")}`,

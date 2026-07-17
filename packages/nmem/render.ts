@@ -156,7 +156,7 @@ function renderMemoriesExpanded(
       `    ${dimLabel(theme, "type")}       ${valueColor.enum(theme, m.unit_type)}`,
     );
     lines.push(
-      `    ${dimLabel(theme, "importance")} ${valueColor.number(theme, `${m.importance}/10`)}`,
+      `    ${dimLabel(theme, "importance")} ${valueColor.number(theme, m.importance.toFixed(2))}`,
     );
     lines.push(
       `    ${dimLabel(theme, "content")}    ${valueColor.text(theme, m.content)}`,
@@ -286,7 +286,7 @@ export function renderSaveMemoryResult(
   }
   if (args?.importance !== undefined) {
     lines.push(
-      `    ${dimLabel(theme, "importance")} ${valueColor.number(theme, `${args.importance}/10`)}`,
+      `    ${dimLabel(theme, "importance")} ${valueColor.number(theme, args.importance.toFixed(2))}`,
     );
   }
   if (details.updated_fields && details.updated_fields.length > 0) {
