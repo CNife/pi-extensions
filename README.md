@@ -13,6 +13,7 @@ Refer to [CONTEXT.md](CONTEXT.md) for the project's domain glossary.
 | [`@cnife/pi-auto-naming-session`](#auto-naming-session) | Extension | turn 边界自动生成/刷新会话标题 |
 | [`@cnife/pi-execute-python`](#execute-python) | Extension | 用 uv 执行 Python，实时流式输出，自动依赖管理 |
 | [`@cnife/pi-inference-speed`](#inference-speed) | Extension | footer 显示推理速度 TPS 和首 token 延迟 TTFT |
+| [`@cnife/pi-inline-skill-completion`](#inline-skill-completion) | Extension | 输入框任意位置补全技能，支持一行多个并折叠渲染 |
 | [`@cnife/pi-miscs`](#miscs) | Extension | 调试 & 快捷退出等小工具 |
 | [`@cnife/pi-nmem`](#nmem) | Extension | 用 pi 原生 tool 打 nmem 后端 REST（搜索/深读/保存记忆），替代 nowledge-mem-pi，不依赖 nmem CLI |
 
@@ -40,6 +41,7 @@ pi install npm:@cnife/pi-agent-loop-reflection
 pi install npm:@cnife/pi-auto-naming-session
 pi install npm:@cnife/pi-execute-python
 pi install npm:@cnife/pi-inference-speed
+pi install npm:@cnife/pi-inline-skill-completion
 pi install npm:@cnife/pi-miscs
 pi install npm:@cnife/pi-nmem
 ```
@@ -69,6 +71,10 @@ pi install npm:@cnife/pi-nmem
 ### inference-speed
 
 在 pi footer 显示当前 assistant message 的推理速度（TPS = output tokens / 生成耗时）和首 token 延迟（TTFT）。格式 `12.3T/s FT1.2s`，无数据时 dim 色占位，每条 message 结束后刷新。
+
+### inline-skill-completion
+
+在输入框**任意位置**输入 `/` 补全已安装技能（`/skill:<name>`），支持一行提交多个技能，每个渲染为独立的原生 `[skill]` 可折叠块。行首 `/` 仍委托原生 slash 命令补全。
 
 ### miscs
 
