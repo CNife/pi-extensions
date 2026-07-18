@@ -94,6 +94,26 @@ OpenAPI schema 是 FastAPI 风格（含 `HTTPValidationError` schema），但后
 
 **响应** [422]：`text/plain` `Failed to deserialize the JSON body into the target type: ...`（axum 格式，非 JSON）。
 
+### GET /threads（列表）
+
+> ⚠ OpenAPI 未覆盖此端点（r3 调研时未在 schema 中确认），以下为运行时实测契约（2026-07-18，CLI v0.10.30 / server v0.10.30）。依赖有漂移风险，调用方需防御性解析。
+
+**Query params**：`limit`（默认 20）、`offset`（默认 0）、`source`（过滤 integration，如 `pi`/`omp`）、`space_id`。未知 param 静默忽略。
+
+**响应** [200]：
+
+| 字段 | 说明 |
+|---|---|
+| `threads` | 数组，每元素含 `id`（pi- 前缀 thread_id）/ `title` / `summary` / `source` / `messages`（int，消息数）/ `date`（仅日期 `"Jul 18, 2026"`，导入日期非会话开始）/ `is_favorite` / `space_id` / `metadata` / `agent_id` / `source_app` / `host_agent_id` |
+| `pagination` | `{limit, offset, total, has_more}` |
+
+**注意**：
+
+- 排序：按导入时间倒序（最新在前），与 CLI `t list` 一致。
+- `date` 只到天且为**导入日期**，不可用于时分级切分；精确会话开始时刻需 `GET /threads/{id}` 的 `messages[0].timestamp`（见 r4、#93）。
+- `messages` 是消息数（int），非消息体数组；消息体走 `GET /threads/{id}`。
+- 对比 `GET /threads/search`：search 需 `query`（语义搜索，返回 `total_found`+`relevance_score`）；list 无 query（按时间列举，返回 `pagination`）。两者职责不同，list 应为独立工具而非 search 的无 query 模式。
+
 ### GET /threads/search
 
 **Query params**：`query`（req）、`mode`（`'suggestions'`/`'full'`，默认 `full`）、`limit`（默认 20）、`source`、`space_id`。
