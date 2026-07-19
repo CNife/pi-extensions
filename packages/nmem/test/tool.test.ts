@@ -16,6 +16,7 @@
 import { ok } from "node:assert";
 import { before, test } from "node:test";
 import {
+  nmemListThreads,
   nmemReadThread,
   nmemRequest,
   nmemSaveMemory,
@@ -75,6 +76,18 @@ backendTest(
     const text = toToonText(result);
     ok(text.includes("messages["), `messages array header:\n${text}`);
     ok(text.includes("total_messages:"), `total_messages field:\n${text}`);
+  },
+);
+
+backendTest(
+  "list_threads -> toToonText is TOON with threads array",
+  async () => {
+    const result = await nmemListThreads({ limit: 3 });
+    if (result.threads.length === 0) return;
+    const text = toToonText(result);
+    ok(text.includes("threads["), `threads array header:\n${text}`);
+    ok(text.includes("total:"), `total field:\n${text}`);
+    ok(text.includes("has_more:"), `has_more field:\n${text}`);
   },
 );
 

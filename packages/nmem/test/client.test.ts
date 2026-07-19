@@ -21,11 +21,13 @@ import {
   type MemoryHit,
   mapStatus,
   NmemError,
+  nmemListThreads,
   nmemReadThread,
   nmemRequest,
   nmemSaveMemory,
   nmemSearch,
   resolveConfig,
+  type ThreadListItem,
   type ThreadsSearchResult,
 } from "../client.ts";
 
@@ -405,14 +407,14 @@ backendTest(
 
     ok(result.returned > 0, "should return at least one message");
     ok(result.messages.length > 0, "should have messages array populated");
-    // Regression guard: real backend nests title/created_at under `thread`.
+    // Regression guard: real backend nests title under `thread`; messages carry timestamp.
     ok(
       result.title.length > 0,
       `title should be non-empty, got: "${result.title}"`,
     );
     ok(
-      result.created_at.length > 0,
-      `created_at should be non-empty, got: "${result.created_at}"`,
+      result.messages[0].timestamp.length > 0,
+      `messages[0].timestamp should be non-empty, got: "${result.messages[0].timestamp}"`,
     );
     ok(
       result.total_messages > 0,
@@ -423,16 +425,14 @@ backendTest(
       ok(typeof msg.role === "string", "message role is a string");
       ok(typeof msg.content === "string", "message content is a string");
       ok(msg.content.length > 0, "message content should be non-empty");
+      ok(typeof msg.timestamp === "string", "message timestamp is a string");
     }
     ok(typeof result.hint === "string", "hint is a string");
     ok(result.hint.length > 0, "hint is non-empty");
-    // hint matches one of the two patterns
-    const atEnd = result.hint.startsWith("已到末尾");
-    const hasUnread = result.hint.includes("条未读");
-    ok(
-      atEnd || hasUnread,
-      `hint matches expected pattern, got: ${result.hint}`,
-    );
+    // hint matches one of the two patterns (no more · N total / N more · offset X)
+    const atEnd = result.hint.startsWith("no more ·");
+    const hasMore = result.hint.includes("more · offset");
+    ok(atEnd || hasMore, `hint matches expected pattern, got: ${result.hint}`);
 
     // Budget segmentation: for a large thread, one page should not exhaust it.
     if (result.total_messages > result.returned) {
@@ -454,6 +454,60 @@ backendTest("nmemReadThread: 404 -> not_found", async () => {
     },
   );
 });
+
+// ============================================================================
+// nmemListThreads (needs backend)
+// ============================================================================
+
+backendTest("nmemListThreads: 6 fields, flat pagination, hint", async () => {
+  const result = await nmemListThreads({ limit: 5 });
+  const threads = result.threads ?? [];
+  if (threads.length === 0) return; // skip if backend has no threads
+  ok(result.returned === threads.length, "returned === array length");
+
+  const item = threads[0] as ThreadListItem;
+  deepStrictEqual(
+    Object.keys(item).sort(),
+    ["date", "id", "message_count", "source", "summary", "title"],
+    "exactly 6 fields",
+  );
+  ok(typeof item.id === "string" && item.id.length > 0);
+  ok(typeof item.title === "string");
+  ok(typeof item.summary === "string");
+  ok(typeof item.date === "string");
+  ok(typeof item.source === "string");
+  ok(typeof item.message_count === "number");
+
+  // flat pagination (no nested pagination object)
+  ok(typeof result.total === "number");
+  ok(typeof result.has_more === "boolean");
+  ok(!("pagination" in result), "pagination is flattened, not nested");
+
+  // hint encodes has_more
+  ok(typeof result.hint === "string");
+  if (result.has_more) {
+    ok(result.hint.includes("more · offset"), `has_more hint: ${result.hint}`);
+  } else {
+    ok(result.hint.startsWith("no more ·"), `end hint: ${result.hint}`);
+  }
+});
+
+backendTest(
+  "nmemListThreads: raw messages(int) -> message_count, pagination -> flat",
+  async () => {
+    const raw = await nmemRequest<{
+      threads?: Array<{ messages?: number }>;
+      pagination?: { total?: number; has_more?: boolean };
+    }>("GET", "/threads", { query: { limit: 1 } });
+    const shaped = await nmemListThreads({ limit: 1 });
+    if (!raw.threads || raw.threads.length === 0 || shaped.threads.length === 0)
+      return;
+    if (!raw.pagination) return;
+    strictEqual(shaped.threads[0].message_count, raw.threads[0].messages);
+    strictEqual(shaped.total, raw.pagination.total);
+    strictEqual(shaped.has_more, raw.pagination.has_more);
+  },
+);
 
 // ============================================================================
 // nmemSaveMemory (needs backend)

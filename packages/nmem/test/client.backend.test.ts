@@ -148,9 +148,9 @@ backendTest("read 211-msg thread: budget segmentation + hint", async () => {
   ok(r.returned > 0, "returned <= 0");
   strictEqual(r.total_messages, 211);
   ok(r.title.length > 0, `title empty`);
-  ok(r.created_at.length > 0, "created_at empty");
+  ok(r.messages[0].timestamp.length > 0, "messages[0].timestamp empty");
   ok(
-    r.hint.includes("未读") || r.hint.startsWith("已到末尾"),
+    r.hint.includes("more · offset") || r.hint.startsWith("no more ·"),
     `hint=${r.hint}`,
   );
   strictEqual(r.offset, 0);

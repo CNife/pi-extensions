@@ -5,7 +5,7 @@
  * and structured errors. Three concerns, one module:
  *   1. resolveConfig - slimmed config (apiUrl/apiKey only)
  *   2. nmemRequest   - shared REST base (8s timeout, 6 error codes, retry transient faults, throw)
- *   3. nmemSearch    - the search tool (memories/threads shaping)
+ *   3. shaping       - per-tool response shaping (nmemSearch/nmemReadThread/nmemListThreads/nmemSaveMemory)
  *
  * Two-layer separation (mirrors execute-python kernel.ts):
  *   1. This module: pure REST + shaping, knows nothing of TUI/LLM.
@@ -431,6 +431,19 @@ export async function nmemSearch(
   return { returned: memories.length, memories };
 }
 
+/** Format the paging hint shared by nmemReadThread and nmemListThreads. */
+function formatPagingHint(opts: {
+  total: number;
+  remaining: number;
+  nextOffset: number;
+  hasMore: boolean;
+}): string {
+  if (!opts.hasMore) return `no more · ${opts.total} total`;
+  if (opts.remaining > 0)
+    return `${opts.remaining} more · offset ${opts.nextOffset}`;
+  return `more · offset ${opts.nextOffset}`;
+}
+
 // ============================================================================
 // nmemReadThread
 // ============================================================================
@@ -439,11 +452,11 @@ export interface ThreadMessage {
   index: number;
   role: string;
   content: string;
+  timestamp: string;
 }
 
 export interface ReadThreadResult {
   title: string;
-  created_at: string;
   total_messages: number;
   offset: number;
   returned: number;
@@ -457,12 +470,12 @@ interface RawThreadMessage {
   order_index?: number;
   role?: string;
   content?: string;
+  timestamp?: string;
 }
 interface RawThreadResponse {
   thread?: {
     id?: string;
     title?: string;
-    created_at?: string;
     source?: string;
     space_id?: string;
     message_count?: number;
@@ -488,7 +501,6 @@ export async function nmemReadThread(
   const messages: ThreadMessage[] = [];
   let totalChars = 0;
   let title = "";
-  let createdAt = "";
   let totalMessages = 0;
 
   for (;;) {
@@ -500,7 +512,6 @@ export async function nmemReadThread(
 
     const thread = data.thread ?? {};
     title = String(thread.title ?? "");
-    createdAt = String(thread.created_at ?? "");
     totalMessages = Number(data.total_messages ?? 0);
 
     const rawMessages = data.messages ?? [];
@@ -528,6 +539,7 @@ export async function nmemReadThread(
         index,
         role: String(raw.role ?? ""),
         content,
+        timestamp: String(raw.timestamp ?? ""),
       });
       totalChars += contentLen;
     }
@@ -539,30 +551,126 @@ export async function nmemReadThread(
   if (messages.length === 0 && totalMessages === 0) {
     return {
       title: "",
-      created_at: "",
       total_messages: 0,
       offset,
       returned: 0,
       messages: [],
       hint: "",
-      note: "该线程无消息",
+      note: "no messages",
     };
   }
 
   const returned = messages.length;
   const remaining = totalMessages - offset - returned;
-  const hint =
-    remaining <= 0
-      ? `已到末尾（共 ${totalMessages} 条）`
-      : `还有 ${remaining} 条未读，offset=${offset + returned} 继续`;
+  const hint = formatPagingHint({
+    total: totalMessages,
+    remaining,
+    nextOffset: offset + returned,
+    hasMore: remaining > 0,
+  });
 
   return {
     title,
-    created_at: createdAt,
     total_messages: totalMessages,
     offset,
     returned,
     messages,
+    hint,
+  };
+}
+
+// ============================================================================
+// nmemListThreads
+// ============================================================================
+
+export interface ThreadListItem {
+  id: string;
+  title: string;
+  summary: string;
+  date: string;
+  source: string;
+  message_count: number;
+}
+
+export interface ThreadListResult {
+  returned: number;
+  threads: ThreadListItem[];
+  total: number;
+  has_more: boolean;
+  hint: string;
+  note?: string;
+}
+
+// Raw REST shape for GET /threads (OpenAPI ThreadListResponse).
+interface RawThreadListItem {
+  id?: string;
+  title?: string;
+  summary?: string;
+  source?: string;
+  messages?: number;
+  date?: string;
+}
+interface RawThreadListResponse {
+  threads?: RawThreadListItem[];
+  pagination?: {
+    limit?: number;
+    offset?: number;
+    total?: number;
+    has_more?: boolean;
+  };
+}
+
+/**
+ * List threads by import time (newest first). `date` is the import date
+ * (day-grained, e.g. "Jul 18, 2026"), NOT the session start time - use
+ * `nmemReadThread`'s `messages[0].timestamp` for precise time splitting.
+ * Defensive parsing tolerates field drift, mirroring nmemSearch's discipline.
+ */
+export async function nmemListThreads(opts?: {
+  limit?: number;
+  offset?: number;
+  source?: string;
+}): Promise<ThreadListResult> {
+  const limit = opts?.limit ?? 20;
+  const offset = opts?.offset ?? 0;
+  const data = await nmemRequest<RawThreadListResponse>("GET", "/threads", {
+    query: { limit, offset, source: opts?.source },
+  });
+
+  const threads = (data.threads ?? []).map((t) => ({
+    id: String(t.id ?? ""),
+    title: String(t.title ?? ""),
+    summary: String(t.summary ?? ""),
+    date: String(t.date ?? ""),
+    source: String(t.source ?? ""),
+    message_count: Number(t.messages ?? 0),
+  }));
+
+  const pagination = data.pagination ?? {};
+  const total = Number(pagination.total ?? 0);
+  const hasMore = Boolean(pagination.has_more ?? false);
+
+  if (threads.length === 0) {
+    return {
+      returned: 0,
+      threads,
+      total,
+      has_more: hasMore,
+      hint: "",
+      note: "no synced threads",
+    };
+  }
+
+  const returned = threads.length;
+  const remaining = total - offset - returned;
+  const nextOffset = offset + returned;
+  const hint = formatPagingHint({ total, remaining, nextOffset, hasMore });
+
+  return {
+    returned,
+    threads,
+    total,
+    has_more: hasMore,
     hint,
   };
 }

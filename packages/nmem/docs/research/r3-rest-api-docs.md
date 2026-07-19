@@ -4,6 +4,8 @@
 > 调研日期：2026-07-16
 > 权威来源：`http://127.0.0.1:14242/openapi.json`（OpenAPI 3.1.0, "Nowledge Mem API", info.version `0.9.15`, 276 paths）+ 运行时实测
 > nmem CLI 版本：`0.10.28`（与 API `info.version 0.9.15` 是不同版本线，勿混用）
+>
+> 更新（#95）：新增 `nmem_list_threads` 用 `GET /threads`（按导入时间列举，非 search）。该端点已被 OpenAPI 文档化（params limit/offset/source/space_id + pagination.{total,has_more}），不在本调研范围；字段语义见 `client.ts` 防御性解析。
 
 ## ⚠ 关键发现：OpenAPI 与运行时三处不符
 
@@ -93,6 +95,26 @@ OpenAPI schema 是 FastAPI 风格（含 `HTTPValidationError` schema），但后
 `memory` node 字段（节选，完整含 ~40 字段）：`id` / `node_type` / `created_at` / `updated_at` / `metadata`（含 `score_breakdown`/`graph_traversal`/`search_context_snapshot`，实现丢弃）/ `content` / `title` / `importance` / `confidence` / `pagerank_score` / `embedding` / `source_range` / `source` / `space_id` / `semantic_field` / `access_count` / `appearances` / `clicks` / `decay_score_cached` / `temporal_context` / `event_start` / `event_end` / `unit_type` / `is_latest` / `version` / `is_crystal` / `crystal_title` / `extraction_method` / `review_status`。
 
 **响应** [422]：`text/plain` `Failed to deserialize the JSON body into the target type: ...`（axum 格式，非 JSON）。
+
+### GET /threads（列表）
+
+> ⚠ OpenAPI 未覆盖此端点（r3 调研时未在 schema 中确认），以下为运行时实测契约（2026-07-18，CLI v0.10.30 / server v0.10.30）。依赖有漂移风险，调用方需防御性解析。
+
+**Query params**：`limit`（默认 20）、`offset`（默认 0）、`source`（过滤 integration，如 `pi`/`omp`）、`space_id`。未知 param 静默忽略。
+
+**响应** [200]：
+
+| 字段 | 说明 |
+|---|---|
+| `threads` | 数组，每元素含 `id`（pi- 前缀 thread_id）/ `title` / `summary` / `source` / `messages`（int，消息数）/ `date`（仅日期 `"Jul 18, 2026"`，导入日期非会话开始）/ `is_favorite` / `space_id` / `metadata` / `agent_id` / `source_app` / `host_agent_id` |
+| `pagination` | `{limit, offset, total, has_more}` |
+
+**注意**：
+
+- 排序：按导入时间倒序（最新在前），与 CLI `t list` 一致。
+- `date` 只到天且为**导入日期**，不可用于时分级切分；精确会话开始时刻需 `GET /threads/{id}` 的 `messages[0].timestamp`（见 r4、#93）。
+- `messages` 是消息数（int），非消息体数组；消息体走 `GET /threads/{id}`。
+- 对比 `GET /threads/search`：search 需 `query`（语义搜索，返回 `total_found`+`relevance_score`）；list 无 query（按时间列举，返回 `pagination`）。两者职责不同，list 应为独立工具而非 search 的无 query 模式。
 
 ### GET /threads/search
 
