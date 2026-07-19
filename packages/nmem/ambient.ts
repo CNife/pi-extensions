@@ -11,7 +11,12 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { NmemError, nmemRequest, stringValue } from "./client.ts";
+import {
+  type JsonObject,
+  NmemError,
+  nmemRequest,
+  stringValue,
+} from "./client.ts";
 
 // ============================================================================
 // Constants
@@ -28,8 +33,6 @@ const DEFAULT_PLUGIN_VERSION = "pi-nmem/0.4.0";
 // ============================================================================
 // Types
 // ============================================================================
-
-type JsonObject = Record<string, unknown>;
 
 interface ThreadMessage {
   role: "user" | "assistant" | "system";

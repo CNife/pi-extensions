@@ -51,7 +51,7 @@ export interface NmemConfig {
   apiKey?: string;
 }
 
-type JsonObject = Record<string, unknown>;
+export type JsonObject = Record<string, unknown>;
 
 function readSharedConfig(): JsonObject {
   try {
