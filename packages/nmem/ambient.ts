@@ -172,6 +172,19 @@ function normalizeRole(
   return undefined;
 }
 
+function buildEntryMetadata(
+  entry: JsonObject,
+  index: number,
+  ambient: JsonObject,
+): JsonObject {
+  return {
+    external_id: `${sourceApp()}-entry-${stringValue(entry.id) || index}`,
+    pi_entry_id: stringValue(entry.id),
+    pi_entry_type: entry.type,
+    ...ambient,
+  };
+}
+
 function entryToMessage(
   entry: JsonObject,
   index: number,
@@ -191,11 +204,8 @@ function entryToMessage(
       content,
       timestamp: stringValue(entry.timestamp),
       metadata: {
-        external_id: `${sourceApp()}-entry-${stringValue(entry.id) || index}`,
-        pi_entry_id: stringValue(entry.id),
-        pi_entry_type: entry.type,
+        ...buildEntryMetadata(entry, index, ambient),
         pi_message_role: stringValue(msg.role),
-        ...ambient,
       },
     };
   }
@@ -208,13 +218,10 @@ function entryToMessage(
       content: `${hostLabel()} custom context${stringValue(entry.customType) ? ` (${stringValue(entry.customType)})` : ""}:\n${content}`,
       timestamp: stringValue(entry.timestamp),
       metadata: {
-        external_id: `${sourceApp()}-entry-${stringValue(entry.id) || index}`,
-        pi_entry_id: stringValue(entry.id),
-        pi_entry_type: entry.type,
+        ...buildEntryMetadata(entry, index, ambient),
         pi_custom_type: stringValue(entry.customType),
         pi_custom_display:
           typeof entry.display === "boolean" ? entry.display : undefined,
-        ...ambient,
       },
     };
   }
@@ -232,12 +239,7 @@ function entryToMessage(
       role: "assistant",
       content,
       timestamp: stringValue(entry.timestamp),
-      metadata: {
-        external_id: `${sourceApp()}-entry-${stringValue(entry.id) || index}`,
-        pi_entry_id: stringValue(entry.id),
-        pi_entry_type: entry.type,
-        ...ambient,
-      },
+      metadata: buildEntryMetadata(entry, index, ambient),
     };
   }
 
