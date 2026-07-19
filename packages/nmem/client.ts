@@ -135,7 +135,6 @@ export function mapStatus(status: number): NmemErrorCode {
   if (status === 401) return "unauthorized";
   if (status === 404) return "not_found";
   if (status === 400 || status === 422) return "bad_request";
-  if (status >= 500) return "server_error";
   return "server_error";
 }
 
