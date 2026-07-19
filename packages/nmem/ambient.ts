@@ -62,6 +62,15 @@ interface StartupContextEntry {
   degradedReason?: string;
 }
 
+interface SessionManagerLike {
+  getBranch?: () => JsonObject[];
+  getEntries?: () => JsonObject[];
+  getSessionId?: () => string;
+  getSessionFile?: () => string | undefined;
+  getSessionName?: () => string | undefined;
+  getCwd?: () => string;
+}
+
 // ============================================================================
 // Module state
 // ============================================================================
@@ -239,10 +248,7 @@ function buildMessages(ctx: ExtensionContext): ThreadMessage[] {
   const ambient: JsonObject = {
     source_app: sourceApp(),
   };
-  const manager = ctx.sessionManager as unknown as {
-    getBranch?: () => JsonObject[];
-    getEntries?: () => JsonObject[];
-  };
+  const manager = ctx.sessionManager as unknown as SessionManagerLike;
   const entries =
     typeof manager.getBranch === "function"
       ? manager.getBranch()
@@ -253,10 +259,7 @@ function buildMessages(ctx: ExtensionContext): ThreadMessage[] {
 }
 
 function sessionId(ctx: ExtensionContext): string {
-  const manager = ctx.sessionManager as unknown as {
-    getSessionId?: () => string;
-    getSessionFile?: () => string | undefined;
-  };
+  const manager = ctx.sessionManager as unknown as SessionManagerLike;
   const id = manager.getSessionId?.();
   if (id) return id;
   const file = manager.getSessionFile?.();
@@ -271,10 +274,7 @@ function threadIdFor(ctx: ExtensionContext): string {
 }
 
 function buildTitle(ctx: ExtensionContext, messages: ThreadMessage[]): string {
-  const manager = ctx.sessionManager as unknown as {
-    getSessionName?: () => string | undefined;
-    getCwd?: () => string;
-  };
+  const manager = ctx.sessionManager as unknown as SessionManagerLike;
   const name = manager.getSessionName?.()?.trim();
   if (name) return name;
   const firstUser = messages.find((msg) => msg.role === "user")?.content.trim();
@@ -357,10 +357,7 @@ function buildSyncPayload(
 
   const threadId = threadIdFor(ctx);
   const id = sessionId(ctx);
-  const manager = ctx.sessionManager as unknown as {
-    getCwd?: () => string;
-    getSessionFile?: () => string | undefined;
-  };
+  const manager = ctx.sessionManager as unknown as SessionManagerLike;
   const body: JsonObject = {
     thread_id: threadId,
     title: buildTitle(ctx, messages),
@@ -502,10 +499,7 @@ async function readContextBundle(): Promise<StartupContextEntry> {
 }
 
 function startupContextCacheKey(ctx: ExtensionContext): string | undefined {
-  const manager = ctx.sessionManager as unknown as {
-    getSessionId?: () => string;
-    getSessionFile?: () => string | undefined;
-  };
+  const manager = ctx.sessionManager as unknown as SessionManagerLike;
   const id = manager.getSessionId?.();
   const normalizedId = id?.trim();
   if (normalizedId && normalizedId.toLowerCase() !== "unknown")
