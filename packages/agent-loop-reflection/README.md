@@ -56,7 +56,7 @@ PI_CODING_AGENT_DIR=/tmp/pi-agent-loop-reflection-test \
 
 缺失配置会自动创建默认文件；读取失败、JSON 非法或字段类型非法时会输出 warning 并使用默认配置。修改配置后需要重启 pi 生效。
 
-## 行为说明
+## 使用
 
 插件在 `turn_end` 事件中递减一个倒计数器。只有当最近一条 assistant message 的 `stopReason` 是 `toolUse` 时才会发送提醒，避免模型已经正常结束时额外开启一轮。
 
@@ -72,6 +72,6 @@ PI_CODING_AGENT_DIR=/tmp/pi-agent-loop-reflection-test \
 
 | 现象 | 原因 | 处理 |
 |------|------|------|
-| 启动后没有提醒 | 未达到 `thresholdTurns`，或 agent 已经正常结束，没有下一轮 continuation | 降低阈值做测试，或观察长工具链任务。 |
+| 启动后没有提醒 | 未达到 `reminderTurnsInterval`，或 agent 已经正常结束，没有下一轮 continuation | 降低间隔值做测试，或观察长工具链任务。 |
 | 修改配置后没生效 | 配置只在扩展加载时读取 | 重启 pi。 |
 | 非法 JSON 后仍然继续运行 | 这是预期行为；插件会 warning 并使用默认配置 | 修正配置后重启。 |

@@ -20,7 +20,7 @@ pi 原生有两个限制：
 pi install npm:@cnife/pi-inline-skill-completion
 ```
 
-## 用法
+## 使用
 
 在输入框任意位置输入 `/`，选择技能后插入规范形式 `/skill:<name> `（带尾随空格，便于连续输入多个）。可以一行写多个：
 

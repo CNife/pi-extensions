@@ -14,11 +14,12 @@ GitHub Issues（`CNife/pi-extensions`），用 `gh` CLI。见 `docs/agents/issue
 
 ### Domain docs
 
-single-context：根 `CONTEXT.md` + 根 `docs/adr/`。见 `docs/agents/domain.md`。
+multi-context：根 `CONTEXT-MAP.md` 索引各 context 的 `CONTEXT.md`（通用 + nmem），系统级 ADR 在 `docs/adr/`。见 `docs/agents/domain.md`。
 
 ## 参考
 
 - [CONTEXT.md](CONTEXT.md) - 领域术语表
+- [CONTEXT-MAP.md](CONTEXT-MAP.md) - context 索引
 - [packages/AGENTS.md](packages/AGENTS.md) - 扩展开发规范
 - [docs/troubleshooting.md](docs/troubleshooting.md) - 排查与本地测试
 - [docs/deployment.md](docs/deployment.md) - 部署原理
