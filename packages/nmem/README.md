@@ -18,6 +18,12 @@
 
 运行时只需 nmem 后端 REST 可达，**不依赖 nmem CLI**。低频/高级操作（save_thread handoff、记忆/线程批量管理、系统管理、导入导出等）仍可用裸 `nmem` CLI 手动完成。
 
+## 安装
+
+```bash
+pi install npm:@cnife/pi-nmem
+```
+
 ## tool surface（4 个，纯打 REST）
 
 | tool | REST 端点 | 用途 |
@@ -68,6 +74,5 @@
 
 - 架构决策：[ADR-0001](../../docs/adr/0001-pi-native-tool-not-axi-cli.md)
 - 调研：[docs/nmem-usage-patterns.md](./docs/nmem-usage-patterns.md)
-- 术语：根 [CONTEXT.md](../../CONTEXT.md) 的 nmem 集成 section
-
-LICENSE：MIT。本包 fork 了 nowledge-mem-pi 的 extension 逻辑（ambient sync + 启动注入），其版权声明见 [LICENSE](./LICENSE)。
+- 术语：[CONTEXT.md](./CONTEXT.md)
+- 许可：MIT；本包 fork 了 nowledge-mem-pi 的 extension 逻辑（ambient sync + 启动注入），版权声明见 [LICENSE](./LICENSE)

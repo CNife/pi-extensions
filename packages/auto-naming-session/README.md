@@ -17,7 +17,7 @@ pi install npm:@cnife/pi-auto-naming-session
 
 ## 配置
 
-配置文件位于 `~/.pi/cnife-auto-naming-session.json`，首次加载时自动生成默认值：
+配置文件位于 `~/.pi/agent/cnife-auto-naming-session.json`（`<agent-dir>` 由 `PI_CODING_AGENT_DIR` 决定，默认 `~/.pi/agent`），首次加载时自动生成默认值：
 
 ```json
 {
@@ -33,13 +33,9 @@ pi install npm:@cnife/pi-auto-naming-session
 | `model` | `null` | 指定模型 `"provider/modelId"`，`null` 用当前会话模型 |
 | `language` | `"english"` | 标题语言 |
 
-## 机制
+## 使用
 
 - **首标题**：第一条 user message 到达后立即生成（`message_end` 事件），不等待 agent 回合。
 - **周期刷新**：`agent_end` 时统计自上次命名以来的 user+assistant 消息数，达阈值则综合整段对话重新生成标题。
 - **全弧线综合**：每次刷新遍历整个会话分支，收集所有 user/assistant 消息文本喂给 LLM，让标题反映会话全貌而非最近片段。
 - **手动保护**：检测到用户手动改过标题后，停止自动覆盖。
-
-## License
-
-MIT
