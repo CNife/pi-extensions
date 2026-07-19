@@ -11,7 +11,12 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { NmemError, nmemRequest, stringValue } from "./client.ts";
+import {
+  type JsonObject,
+  NmemError,
+  nmemRequest,
+  stringValue,
+} from "./client.ts";
 
 // ============================================================================
 // Constants
@@ -23,13 +28,11 @@ const FLUSH_DELAY_MS = 750;
 // nowledge-mem-pi（裸号 0.8.3）与 nmem CLI：三者 source 均为 "pi"，tool_version
 // 是唯一区分点，裸号会混淆（已实测后端只存储不解析，前缀安全）。与
 // package.json version 保持同步。
-const DEFAULT_PLUGIN_VERSION = "pi-nmem/0.4.0";
+const DEFAULT_PLUGIN_VERSION = "pi-nmem/0.4.1";
 
 // ============================================================================
 // Types
 // ============================================================================
-
-type JsonObject = Record<string, unknown>;
 
 interface ThreadMessage {
   role: "user" | "assistant" | "system";
@@ -57,6 +60,15 @@ interface SyncPayload {
 interface StartupContextEntry {
   context?: string;
   degradedReason?: string;
+}
+
+interface SessionManagerLike {
+  getBranch?: () => JsonObject[];
+  getEntries?: () => JsonObject[];
+  getSessionId?: () => string;
+  getSessionFile?: () => string | undefined;
+  getSessionName?: () => string | undefined;
+  getCwd?: () => string;
 }
 
 // ============================================================================
@@ -160,6 +172,19 @@ function normalizeRole(
   return undefined;
 }
 
+function buildEntryMetadata(
+  entry: JsonObject,
+  index: number,
+  ambient: JsonObject,
+): JsonObject {
+  return {
+    external_id: `${sourceApp()}-entry-${stringValue(entry.id) || index}`,
+    pi_entry_id: stringValue(entry.id),
+    pi_entry_type: entry.type,
+    ...ambient,
+  };
+}
+
 function entryToMessage(
   entry: JsonObject,
   index: number,
@@ -179,11 +204,8 @@ function entryToMessage(
       content,
       timestamp: stringValue(entry.timestamp),
       metadata: {
-        external_id: `${sourceApp()}-entry-${stringValue(entry.id) || index}`,
-        pi_entry_id: stringValue(entry.id),
-        pi_entry_type: entry.type,
+        ...buildEntryMetadata(entry, index, ambient),
         pi_message_role: stringValue(msg.role),
-        ...ambient,
       },
     };
   }
@@ -196,13 +218,10 @@ function entryToMessage(
       content: `${hostLabel()} custom context${stringValue(entry.customType) ? ` (${stringValue(entry.customType)})` : ""}:\n${content}`,
       timestamp: stringValue(entry.timestamp),
       metadata: {
-        external_id: `${sourceApp()}-entry-${stringValue(entry.id) || index}`,
-        pi_entry_id: stringValue(entry.id),
-        pi_entry_type: entry.type,
+        ...buildEntryMetadata(entry, index, ambient),
         pi_custom_type: stringValue(entry.customType),
         pi_custom_display:
           typeof entry.display === "boolean" ? entry.display : undefined,
-        ...ambient,
       },
     };
   }
@@ -220,12 +239,7 @@ function entryToMessage(
       role: "assistant",
       content,
       timestamp: stringValue(entry.timestamp),
-      metadata: {
-        external_id: `${sourceApp()}-entry-${stringValue(entry.id) || index}`,
-        pi_entry_id: stringValue(entry.id),
-        pi_entry_type: entry.type,
-        ...ambient,
-      },
+      metadata: buildEntryMetadata(entry, index, ambient),
     };
   }
 
@@ -236,10 +250,7 @@ function buildMessages(ctx: ExtensionContext): ThreadMessage[] {
   const ambient: JsonObject = {
     source_app: sourceApp(),
   };
-  const manager = ctx.sessionManager as unknown as {
-    getBranch?: () => JsonObject[];
-    getEntries?: () => JsonObject[];
-  };
+  const manager = ctx.sessionManager as unknown as SessionManagerLike;
   const entries =
     typeof manager.getBranch === "function"
       ? manager.getBranch()
@@ -250,10 +261,7 @@ function buildMessages(ctx: ExtensionContext): ThreadMessage[] {
 }
 
 function sessionId(ctx: ExtensionContext): string {
-  const manager = ctx.sessionManager as unknown as {
-    getSessionId?: () => string;
-    getSessionFile?: () => string | undefined;
-  };
+  const manager = ctx.sessionManager as unknown as SessionManagerLike;
   const id = manager.getSessionId?.();
   if (id) return id;
   const file = manager.getSessionFile?.();
@@ -268,10 +276,7 @@ function threadIdFor(ctx: ExtensionContext): string {
 }
 
 function buildTitle(ctx: ExtensionContext, messages: ThreadMessage[]): string {
-  const manager = ctx.sessionManager as unknown as {
-    getSessionName?: () => string | undefined;
-    getCwd?: () => string;
-  };
+  const manager = ctx.sessionManager as unknown as SessionManagerLike;
   const name = manager.getSessionName?.()?.trim();
   if (name) return name;
   const firstUser = messages.find((msg) => msg.role === "user")?.content.trim();
@@ -354,10 +359,7 @@ function buildSyncPayload(
 
   const threadId = threadIdFor(ctx);
   const id = sessionId(ctx);
-  const manager = ctx.sessionManager as unknown as {
-    getCwd?: () => string;
-    getSessionFile?: () => string | undefined;
-  };
+  const manager = ctx.sessionManager as unknown as SessionManagerLike;
   const body: JsonObject = {
     thread_id: threadId,
     title: buildTitle(ctx, messages),
@@ -499,10 +501,7 @@ async function readContextBundle(): Promise<StartupContextEntry> {
 }
 
 function startupContextCacheKey(ctx: ExtensionContext): string | undefined {
-  const manager = ctx.sessionManager as unknown as {
-    getSessionId?: () => string;
-    getSessionFile?: () => string | undefined;
-  };
+  const manager = ctx.sessionManager as unknown as SessionManagerLike;
   const id = manager.getSessionId?.();
   const normalizedId = id?.trim();
   if (normalizedId && normalizedId.toLowerCase() !== "unknown")
