@@ -20,6 +20,7 @@ import type {
   MemoriesSearchResult,
   ReadThreadResult,
   SavedMemoryResult,
+  ThreadListResult,
   ThreadsSearchResult,
 } from "../client.ts";
 import { toToonText } from "../toon.ts";
@@ -68,13 +69,44 @@ const threadsResult: ThreadsSearchResult = {
 
 const readThreadResult: ReadThreadResult = {
   title: "nmem TOON 优化方案讨论",
-  created_at: "2026-07-15",
   total_messages: 34,
   offset: 0,
   returned: 1,
-  messages: [{ index: 0, role: "user", content: "看看 token 消耗" }],
-  hint: "还有 33 条未读，offset=1 继续",
+  messages: [
+    {
+      index: 0,
+      role: "user",
+      content: "看看 token 消耗",
+      timestamp: "2026-07-15T10:00:00Z",
+    },
+  ],
+  hint: "33 more · offset 1",
   note: "分页提示",
+};
+
+const listResult: ThreadListResult = {
+  returned: 2,
+  threads: [
+    {
+      id: "pi-list-001",
+      title: "线程一",
+      summary: "摘要一",
+      date: "Jul 18, 2026",
+      source: "pi",
+      message_count: 10,
+    },
+    {
+      id: "pi-list-002",
+      title: "线程二",
+      summary: "",
+      date: "Jul 17, 2026",
+      source: "omp",
+      message_count: 5,
+    },
+  ],
+  total: 100,
+  has_more: true,
+  hint: "98 more · offset 2",
 };
 
 const savedCreated: SavedMemoryResult = {
@@ -175,4 +207,19 @@ test("toToonText: read_thread message body present and TOON-shaped", () => {
   ok(text.includes("messages["), `expected messages array header:\n${text}`);
   ok(text.includes("看看 token 消耗"), `missing message content:\n${text}`);
   ok(text.includes("total_messages: 34"), `missing total_messages:\n${text}`);
+});
+
+test("toToonText: list_threads result is TOON with threads array + flat pagination", () => {
+  const text = toToonText(listResult);
+  ok(text.includes("threads["), `expected threads array header:\n${text}`);
+  ok(text.includes("total: 100"), `missing total:\n${text}`);
+  ok(text.includes("has_more: true"), `missing has_more:\n${text}`);
+  ok(text.includes("pi-list-001"), `missing thread id:\n${text}`);
+  ok(text.includes("message_count"), `missing message_count column:\n${text}`);
+  ok(text.includes("pi,10"), `missing message_count value:\n${text}`);
+});
+
+test("toToonText: hint appears exactly once for list_threads", () => {
+  const hint = listResult.hint as string;
+  strictEqual(count(toToonText(listResult), hint), 1);
 });

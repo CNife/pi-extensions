@@ -12,18 +12,19 @@
 
 | 职责 | 做法 | 来源 |
 |---|---|---|
-| ① custom tool（3 个） | 注册 3 个 tool，内部打 nmem REST | 全新 |
+| ① custom tool（4 个） | 注册 4 个 tool，内部打 nmem REST | 全新 |
 | ② ambient sync | 自动把 pi 会话同步为 nmem 线程 | fork nowledge-mem-pi extension |
 | ③ 启动上下文注入 | `before_agent_start` 注入 Context Bundle（纯 REST `GET /context/bundle`） | fork，启动注入改打 REST，摆脱 nmem CLI |
 
 运行时只需 nmem 后端 REST 可达，**不依赖 nmem CLI**。低频/高级操作（save_thread handoff、记忆/线程批量管理、系统管理、导入导出等）仍可用裸 `nmem` CLI 手动完成。
 
-## tool surface（3 个，纯打 REST）
+## tool surface（4 个，纯打 REST）
 
 | tool | REST 端点 | 用途 |
 |---|---|---|
 | `nmem_search(query, kind?, limit?)` | `POST /memories/search` / `GET /threads/search` | 搜记忆（kind=memories，默认）或过往会话（kind=threads）。返回精简字段、明确空状态、预计算聚合（returned/total） |
 | `nmem_read_thread(thread_id, offset?)` | `GET /threads/{id}` | 深读会话全文；~8000 字预算自动分段，返回 `offset=N` hint 引导继续；无 limit 参数（agent 不猜条数） |
+| `nmem_list_threads(limit?, offset?, source?)` | `GET /threads` | 按导入时间列举会话（最新优先）；扁平分页（returned/total/has_more）+ hint；与 search 互补（list 按时间无 query，search 按 query） |
 | `nmem_save_memory(title, content, unit_type?, importance?, labels?, id?)` | `POST /memories` / `PATCH /memories/{id}` | upsert 记忆：content 作结构化参数零转义；无 id/空串新建（labels 生效），非空 id 更新（labels 忽略并告警） |
 
 **不占 tool 槽**（交给 extension ambient）：read_context、status、sync。

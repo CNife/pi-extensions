@@ -4,6 +4,8 @@
 > 调研日期：2026-07-16
 > 权威来源：`http://127.0.0.1:14242/openapi.json`（OpenAPI 3.1.0, "Nowledge Mem API", info.version `0.9.15`, 276 paths）+ 运行时实测
 > nmem CLI 版本：`0.10.28`（与 API `info.version 0.9.15` 是不同版本线，勿混用）
+>
+> 更新（#95）：新增 `nmem_list_threads` 用 `GET /threads`（按导入时间列举，非 search）。该端点已被 OpenAPI 文档化（params limit/offset/source/space_id + pagination.{total,has_more}），不在本调研范围；字段语义见 `client.ts` 防御性解析。
 
 ## ⚠ 关键发现：OpenAPI 与运行时三处不符
 

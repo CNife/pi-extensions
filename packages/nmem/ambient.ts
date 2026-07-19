@@ -23,7 +23,7 @@ const FLUSH_DELAY_MS = 750;
 // nowledge-mem-pi（裸号 0.8.3）与 nmem CLI：三者 source 均为 "pi"，tool_version
 // 是唯一区分点，裸号会混淆（已实测后端只存储不解析，前缀安全）。与
 // package.json version 保持同步。
-const DEFAULT_PLUGIN_VERSION = "pi-nmem/0.2.0";
+const DEFAULT_PLUGIN_VERSION = "pi-nmem/0.4.0";
 
 // ============================================================================
 // Types
@@ -462,7 +462,7 @@ function startupGuidance(): string {
   return [
     "## Nowledge Mem Guidance",
     "",
-    `Nowledge Mem is available through the installed ${label} skills, the \`nmem\` CLI, and the three nmem tools (nmem_search, nmem_read_thread, nmem_save_memory). Use it when past context would make the work better.`,
+    `Nowledge Mem is available through the installed ${label} skills, the \`nmem\` CLI, and the four nmem tools (nmem_search, nmem_read_thread, nmem_list_threads, nmem_save_memory). Use it when past context would make the work better.`,
     "",
     "- Context Bundle may already be injected above. Do not re-read it unless the user asks or the session context changes.",
     "- Search memory when the task resumes prior work, mentions an earlier decision, or would benefit from the user's established preferences and procedures.",

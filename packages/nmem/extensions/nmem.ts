@@ -1,7 +1,7 @@
 /**
  * nmem extension - thin wrapper entry.
  *
- * Registers three tools (nmem_search, nmem_read_thread, nmem_save_memory)
+ * Registers four tools (nmem_search, nmem_read_thread, nmem_list_threads, nmem_save_memory)
  * and delegates to the REST client deep module (../client.ts). Owns no logic
  * beyond parameter unpacking and shaping the AgentToolResult. The deep
  * module throws NmemError on any failure; per the pi custom-tool error
@@ -18,15 +18,18 @@ import { Text } from "@earendil-works/pi-tui";
 import { installAmbient } from "../ambient.ts";
 import {
   type MemoriesSearchResult,
+  nmemListThreads,
   nmemReadThread,
   nmemSaveMemory,
   nmemSearch,
   type ReadThreadResult,
   type SavedMemoryResult,
   type SearchKind,
+  type ThreadListResult,
   type ThreadsSearchResult,
 } from "../client.ts";
 import {
+  renderListThreadsResult,
   renderReadThreadResult,
   renderSaveMemoryResult,
   renderSearchResult,
@@ -47,6 +50,7 @@ const nmemSearchTool = defineTool({
     "Search before resuming prior work, retrospectives, asking 'why did we choose X', or debugging that resembles a past root cause",
     "Use kind=threads to find past conversations (the current session is also synced as a thread); use kind=memories (default) for distilled knowledge",
     "After a threads hit, pass the returned id directly to nmem_read_thread's thread_id parameter to read the full thread",
+    "To browse recent threads by time (no query), use nmem_list_threads instead of searching",
   ],
   parameters: Type.Object({
     query: Type.String({
@@ -113,8 +117,10 @@ const nmemReadThreadTool = defineTool({
   description: [
     "Read the full content of a conversation thread by its thread_id.",
     "Auto-paginates with character-budget segmentation (fetches messages",
-    "until ~8000 chars total). Follow the returned `offset=N` hint to",
-    "continue reading. Do not guess or fabricate message counts.",
+    "until ~8000 chars total). Each message carries a `timestamp` (ISO 8601",
+    "session-occurrence time); `messages[0].timestamp` is the session start.",
+    "Follow the returned `offset=N` hint to continue reading. Do not guess",
+    "or fabricate message counts.",
   ].join(" "),
   promptGuidelines: [
     "Read full threads surfaced by nmem_search; auto-paginated, follow the returned offset=N hint, do not guess counts",
@@ -152,6 +158,73 @@ const nmemReadThreadTool = defineTool({
   renderResult(result, { expanded }, theme, context) {
     return new Text(
       renderReadThreadResult(
+        result,
+        { expanded, isError: context.isError },
+        theme,
+      ),
+      0,
+      0,
+    );
+  },
+});
+
+const nmemListThreadsTool = defineTool({
+  name: "nmem_list_threads",
+  label: "List threads",
+  description: [
+    "List conversation threads by import time (newest first), with pagination.",
+    "Returns a slim list (id/title/summary/date/source/message_count) - use",
+    "nmem_read_thread to read a thread's full messages. Unlike nmem_search",
+    "this lists by time without a query. `date` is the import date",
+    "(day-grained), not the session start time.",
+  ].join(" "),
+  promptGuidelines: [
+    "Use nmem_list_threads to browse recent threads by time; use nmem_search(kind=threads) to find threads by topic (list needs no query, search needs one)",
+    "Screen by `summary` to pick threads worth reading, then pass the id to nmem_read_thread for full messages",
+    "`date` is the import date (day-grained) for coarse filtering; for precise time splitting (e.g. a 04:00 workday window) use nmem_read_thread's `messages[0].timestamp`",
+  ],
+  parameters: Type.Object({
+    limit: Type.Optional(
+      Type.Number({
+        description: "Maximum threads to return (default 20)",
+      }),
+    ),
+    offset: Type.Optional(
+      Type.Number({
+        description: "Thread offset for pagination (default 0)",
+      }),
+    ),
+    source: Type.Optional(
+      Type.String({
+        description: "Filter by source integration (e.g. pi, omp)",
+      }),
+    ),
+  }),
+
+  async execute(_toolCallId, params) {
+    // NmemError propagates -> pi sets isError:true.
+    const result = await nmemListThreads({
+      limit: params.limit,
+      offset: params.offset,
+      source: params.source,
+    });
+    const text = toToonText(result);
+    return {
+      content: [{ type: "text" as const, text }],
+      details: result as ThreadListResult,
+    };
+  },
+
+  renderCall(args, theme) {
+    const parts = [theme.fg("toolTitle", theme.bold("nmem_list_threads"))];
+    if (args.limit) parts.push(theme.fg("dim", ` · limit ${args.limit}`));
+    if (args.source) parts.push(theme.fg("dim", ` · source ${args.source}`));
+    return new Text(parts.join(""), 0, 0);
+  },
+
+  renderResult(result, { expanded }, theme, context) {
+    return new Text(
+      renderListThreadsResult(
         result,
         { expanded, isError: context.isError },
         theme,
@@ -248,6 +321,7 @@ const nmemSaveMemoryTool = defineTool({
 export default function (pi: ExtensionAPI) {
   pi.registerTool(nmemSearchTool);
   pi.registerTool(nmemReadThreadTool);
+  pi.registerTool(nmemListThreadsTool);
   pi.registerTool(nmemSaveMemoryTool);
   installAmbient(pi);
 }

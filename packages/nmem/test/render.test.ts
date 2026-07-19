@@ -16,6 +16,7 @@ import { ok } from "node:assert";
 import { test } from "node:test";
 import type { AgentToolResultLike, ThemeLike } from "../render.ts";
 import {
+  renderListThreadsResult,
   renderReadThreadResult,
   renderSaveMemoryResult,
   renderSearchResult,
@@ -72,16 +73,30 @@ const threadsResult = {
 
 const readThreadResult = {
   title: "nmem TOON 讨论",
-  created_at: "2026-07-15",
   total_messages: 34,
   offset: 0,
   returned: 5,
   messages: [
-    { index: 0, role: "user", content: "看看 token" },
-    { index: 1, role: "assistant", content: "省 29%" },
-    { index: 2, role: "system", content: "注" },
+    {
+      index: 0,
+      role: "user",
+      content: "看看 token",
+      timestamp: "2026-07-15T10:00:00Z",
+    },
+    {
+      index: 1,
+      role: "assistant",
+      content: "省 29%",
+      timestamp: "2026-07-15T10:00:05Z",
+    },
+    {
+      index: 2,
+      role: "system",
+      content: "注",
+      timestamp: "2026-07-15T10:00:10Z",
+    },
   ],
-  hint: "还有 29 条未读，offset=5 继续",
+  hint: "29 more · offset 5",
 };
 
 const savedCreated = {
@@ -209,7 +224,7 @@ test("read_thread collapsed: title + paging footer + expand hint", () => {
   ok(text.includes("Expand for details"), `expand hint:\n${text}`);
 });
 
-test("read_thread expanded: tool-name title + created + role-colored messages + footer", () => {
+test("read_thread expanded: tool-name title + role-colored messages + footer", () => {
   const result = { details: readThreadResult } as AgentToolResultLike;
   const text = renderReadThreadResult(
     result,
@@ -219,8 +234,6 @@ test("read_thread expanded: tool-name title + created + role-colored messages + 
   // tool-name + title header (middle-dot separator)
   ok(text.includes("nmem_read_thread"), `tool name header:\n${text}`);
   ok(text.includes("·"), `middle-dot separator:\n${text}`);
-  // created label dim
-  ok(text.includes("[dim]created"), `created label:\n${text}`);
   // role coloring: user accent, assistant text, system muted
   ok(text.includes("[accent][user]"), `user role accent:\n${text}`);
   ok(text.includes("[text][assistant]"), `assistant role text:\n${text}`);
@@ -229,6 +242,124 @@ test("read_thread expanded: tool-name title + created + role-colored messages + 
   ok(text.includes("看看 token"), `msg content:\n${text}`);
   // paging footer present in expanded too
   ok(text.includes("34 messages · returned 5 · offset 0"), `footer:\n${text}`);
+});
+
+// ============================================================================
+// list_threads
+// ============================================================================
+
+const listResult = {
+  returned: 2,
+  threads: [
+    {
+      id: "pi-t1",
+      title: "线程一",
+      summary: "摘要一",
+      date: "Jul 18, 2026",
+      source: "pi",
+      message_count: 10,
+    },
+    {
+      id: "pi-t2",
+      title: "线程二",
+      summary: "",
+      date: "Jul 17, 2026",
+      source: "omp",
+      message_count: 5,
+    },
+  ],
+  total: 100,
+  has_more: true,
+  hint: "98 more · offset 2",
+};
+
+const listEndResult = {
+  returned: 2,
+  threads: listResult.threads,
+  total: 100,
+  has_more: false,
+  hint: "no more · 100 total",
+};
+
+const listEmptyResult = {
+  returned: 0,
+  threads: [],
+  total: 0,
+  has_more: false,
+  hint: "",
+  note: "no synced threads",
+};
+
+test("list_threads collapsed: header + numbered list + meta + hint + expand", () => {
+  const result = { details: listResult } as AgentToolResultLike;
+  const text = renderListThreadsResult(
+    result,
+    { expanded: false, isError: false },
+    theme,
+  );
+  // header (text color)
+  ok(text.includes("[text]2 of 100 threads"), `header:\n${text}`);
+  // numbered list, accent-colored rank
+  ok(text.includes("[accent]1."), `rank 1:\n${text}`);
+  ok(text.includes("[accent]2."), `rank 2:\n${text}`);
+  // titles present
+  ok(text.includes("线程一"), `title 1:\n${text}`);
+  ok(text.includes("线程二"), `title 2:\n${text}`);
+  // meta suffix dim: date · N messages · source
+  ok(text.includes("[dim]Jul 18, 2026 · 10 messages · pi"), `meta 1:\n${text}`);
+  // hint dim
+  ok(text.includes("[dim]98 more · offset 2"), `hint:\n${text}`);
+  // expand hint
+  ok(text.includes("Expand for details"), `expand:\n${text}`);
+});
+
+test("list_threads expanded: field block per thread + footer", () => {
+  const result = { details: listResult } as AgentToolResultLike;
+  const text = renderListThreadsResult(
+    result,
+    { expanded: true, isError: false },
+    theme,
+  );
+  // bold titles
+  ok(text.includes("[bold][text]线程一"), `bold title 1:\n${text}`);
+  // labels dim
+  ok(text.includes("[dim]id"), `id label:\n${text}`);
+  ok(text.includes("[dim]date"), `date label:\n${text}`);
+  ok(text.includes("[dim]source"), `source label:\n${text}`);
+  ok(text.includes("[dim]messages"), `messages label:\n${text}`);
+  ok(text.includes("[dim]summary"), `summary label:\n${text}`);
+  // value-type coloring: id muted, message_count toolOutput, source accent
+  ok(text.includes("[muted]pi-t1"), `id muted:\n${text}`);
+  ok(text.includes("[toolOutput]10"), `message_count toolOutput:\n${text}`);
+  ok(text.includes("[accent]pi"), `source accent:\n${text}`);
+  // empty summary -> (empty)
+  ok(text.includes("(empty)"), `empty summary:\n${text}`);
+  // footer: returned of total · hint
+  ok(
+    text.includes("2 of 100 threads · 98 more · offset 2"),
+    `footer:\n${text}`,
+  );
+});
+
+test("list_threads empty: 0 threads + note", () => {
+  const result = { details: listEmptyResult } as AgentToolResultLike;
+  const text = renderListThreadsResult(
+    result,
+    { expanded: false, isError: false },
+    theme,
+  );
+  ok(text.includes("[text]0 threads"), `0 threads:\n${text}`);
+  ok(text.includes("[dim]no synced threads"), `note:\n${text}`);
+});
+
+test("list_threads end state: hint no more · N total", () => {
+  const result = { details: listEndResult } as AgentToolResultLike;
+  const text = renderListThreadsResult(
+    result,
+    { expanded: false, isError: false },
+    theme,
+  );
+  ok(text.includes("[dim]no more · 100 total"), `end hint:\n${text}`);
 });
 
 // ============================================================================

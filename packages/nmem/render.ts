@@ -24,6 +24,7 @@ import type {
   MemoriesSearchResult,
   ReadThreadResult,
   SavedMemoryResult,
+  ThreadListResult,
   ThreadsSearchResult,
 } from "./client.ts";
 
@@ -233,9 +234,6 @@ export function renderReadThreadResult(
   lines.push(
     `  ${theme.fg("toolTitle", theme.bold("nmem_read_thread"))} ${valueColor.text(theme, `· ${details.title}`)}`,
   );
-  lines.push(
-    `    ${dimLabel(theme, "created")} ${valueColor.text(theme, details.created_at)}`,
-  );
   lines.push("");
   for (const msg of details.messages) {
     const tag = theme.fg(roleToken(msg.role), `[${msg.role}]`.padEnd(11));
@@ -243,6 +241,65 @@ export function renderReadThreadResult(
   }
   lines.push("");
   lines.push(`  ${footer}`);
+  return lines.join("\n");
+}
+
+export function renderListThreadsResult(
+  result: AgentToolResultLike,
+  opts: RenderOptions,
+  theme: ThemeLike,
+): string {
+  if (opts.isError) return renderError(result, "nmem_list_threads", theme);
+
+  const details = result.details as ThreadListResult | undefined;
+  if (!details) return result.content?.[0]?.text ?? "";
+
+  // Empty state: 0 threads + note
+  if (details.threads.length === 0) {
+    return [
+      `  ${theme.fg("text", "0 threads")}`,
+      `  ${dimLabel(theme, details.note ?? "no synced threads")}`,
+    ].join("\n");
+  }
+
+  const header = `  ${theme.fg("text", `${details.returned} of ${details.total} threads`)}`;
+
+  if (!opts.expanded) {
+    const lines: string[] = [header];
+    details.threads.forEach((t, i) => {
+      lines.push(
+        `  ${theme.fg("accent", `${i + 1}.`)} ${valueColor.text(theme, t.title)}  ${dimLabel(theme, `${t.date} · ${t.message_count} messages · ${t.source}`)}`,
+      );
+    });
+    if (details.hint) lines.push(`  ${dimLabel(theme, details.hint)}`);
+    lines.push(dimLabel(theme, "  Expand for details"));
+    return lines.join("\n");
+  }
+
+  // expanded: full field block per thread + footer
+  const lines: string[] = [];
+  for (const t of details.threads) {
+    lines.push(`  ${theme.bold(valueColor.text(theme, t.title))}`);
+    lines.push(
+      `    ${dimLabel(theme, "id")}       ${valueColor.id(theme, t.id)}`,
+    );
+    lines.push(
+      `    ${dimLabel(theme, "date")}     ${valueColor.text(theme, t.date)}`,
+    );
+    lines.push(
+      `    ${dimLabel(theme, "source")}   ${valueColor.enum(theme, t.source)}`,
+    );
+    lines.push(
+      `    ${dimLabel(theme, "messages")} ${valueColor.number(theme, `${t.message_count}`)}`,
+    );
+    lines.push(
+      `    ${dimLabel(theme, "summary")}  ${valueColor.text(theme, t.summary || "(empty)")}`,
+    );
+    lines.push("");
+  }
+  lines.push(
+    `  ${dimLabel(theme, `${details.returned} of ${details.total} threads · ${details.hint}`)}`,
+  );
   return lines.join("\n");
 }
 
