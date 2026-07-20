@@ -1,13 +1,24 @@
 {
   "name": "@cnife/pi-footer",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "keywords": [
     "pi-package"
   ],
   "description": "个人专属 pi footer：两行工作区/模型状态，全 dim，仅 ASCII+Unicode",
+  "homepage": "https://github.com/CNife/pi-extensions#readme",
+  "bugs": {
+    "url": "https://github.com/CNife/pi-extensions/issues"
+  },
   "license": "MIT",
   "author": "CNife <CNife@vip.qq.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CNife/pi-extensions.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "pi": {
     "extensions": [
       "./extensions"

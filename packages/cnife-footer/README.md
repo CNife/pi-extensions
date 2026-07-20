@@ -2,7 +2,7 @@
 
 个人专属 pi footer。两行布局，全 dim，仅 ASCII + Unicode（无 nerd font），无配置。
 
-> 个人扩展，不发布到 npm，仅本地 `pi install` 安装使用。
+> 个人扩展。安装：`pi install npm:@cnife/pi-footer`
 
 ## 布局
 
