@@ -1,0 +1,19 @@
+{
+  "name": "@cnife/pi-footer",
+  "version": "0.1.0",
+  "private": true,
+  "keywords": [
+    "pi-package"
+  ],
+  "description": "个人专属 pi footer：两行工作区/模型状态，全 dim，仅 ASCII+Unicode",
+  "license": "MIT",
+  "author": "CNife <CNife@vip.qq.com>",
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}
