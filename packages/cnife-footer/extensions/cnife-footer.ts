@@ -1,7 +1,7 @@
 /**
  * cnife-footer - 个人专属 pi footer。
  * 两行：第一行工作区（目录 · git分支 ↑ahead ↓behind *未提交 · 会话名），
- *       第二行模型（provider/id · thinking · ctx · $cost）。
+ *       第二行模型（provider/id · thinking · ctx · $cost · tps）。
  * 全 dim，仅 ASCII + Unicode，无 nerd font，无配置。
  */
 
@@ -29,6 +29,12 @@ function fmt(n: number): string {
 
 function fmtCost(c: number): string {
   return c < 0.01 ? `$${c.toFixed(3)}` : `$${c.toFixed(2)}`;
+}
+
+/** Type guard: assistant message 才有 usage/stopReason，用于 message_end。 */
+function isAssistantMessage(message: unknown): message is AssistantMessage {
+  if (!message || typeof message !== "object") return false;
+  return (message as { role?: unknown }).role === "assistant";
 }
 
 /** Parse `git status -b --porcelain` output into branch/ahead/behind/dirty. */
@@ -78,6 +84,11 @@ export default function (pi: ExtensionAPI) {
   let refreshing = false;
   let cwd = "";
 
+  // TPS（输出速率）：requestAt 配对 before_provider_request/message_end，
+  // lastTps 保存最近一次有效速率，render 时拼到第 2 行末尾。
+  let requestAt: number | null = null;
+  let lastTps: number | null = null;
+
   const refreshGit = async () => {
     if (refreshing) return;
     refreshing = true;
@@ -96,9 +107,18 @@ export default function (pi: ExtensionAPI) {
     }
   };
 
+  /** 清空 TPS 锚点与最近速率并重渲染（切模型/compact/树导航/无效结束时调用）。 */
+  const resetTps = () => {
+    requestAt = null;
+    lastTps = null;
+    activeTui?.requestRender();
+  };
+
   pi.on("session_start", async (_event, ctx) => {
     cwd = ctx.cwd;
     gitState = { branch: null, ahead: 0, behind: 0, dirty: 0 };
+    requestAt = null;
+    lastTps = null;
 
     ctx.ui.setFooter((tui, theme, footerData) => {
       activeTui = tui;
@@ -135,7 +155,7 @@ export default function (pi: ExtensionAPI) {
             const session = pi.getSessionName() ?? "";
             const line1 = renderLine([dir, gitStr, session], width);
 
-            // Line 2: provider/id · thinking · ctx · $cost (cost=0 隐藏)
+            // Line 2: provider/id · thinking · ctx · $cost · tps (cost=0/无 tps 隐藏)
             const model = ctx.model
               ? `${ctx.model.provider}/${ctx.model.id}`
               : "no-model";
@@ -162,7 +182,11 @@ export default function (pi: ExtensionAPI) {
             }
 
             const costStr = cost > 0 ? fmtCost(cost) : "";
-            const line2 = renderLine([model, thinking, ctxStr, costStr], width);
+            const tpsStr = lastTps != null ? `${lastTps.toFixed(1)}t/s` : "";
+            const line2 = renderLine(
+              [model, thinking, ctxStr, costStr, tpsStr],
+              width,
+            );
 
             return [line1, line2];
           } catch {
@@ -177,6 +201,41 @@ export default function (pi: ExtensionAPI) {
       void refreshGit();
     }, GIT_INTERVAL_MS);
   });
+
+  // TPS（输出速率）：before_provider_request 记请求时刻，message_end 算 output/elapsed。
+  // 口径对齐 pi 官方 tps.ts：elapsed 含网络 + 排队 + 生成，不用 message.timestamp。
+  pi.on("before_provider_request", () => {
+    requestAt = Date.now();
+  });
+
+  pi.on("message_end", (event) => {
+    if (!isAssistantMessage(event.message)) return;
+    const message = event.message as AssistantMessage;
+    // aborted/error 或无效数据时丢弃，不留旧值
+    if (message.stopReason === "aborted" || message.stopReason === "error") {
+      resetTps();
+      return;
+    }
+    const output = message.usage.output;
+    if (requestAt === null || output <= 0) {
+      resetTps();
+      return;
+    }
+    const elapsedSeconds = (Date.now() - requestAt) / 1000;
+    if (elapsedSeconds <= 0) {
+      resetTps();
+      return;
+    }
+    lastTps = output / elapsedSeconds;
+    activeTui?.requestRender();
+    // 消费完毕，等下一条 message 的 before_provider_request
+    requestAt = null;
+  });
+
+  // 切模型 / compact / 树导航后重置 TPS
+  pi.on("session_tree", () => resetTps());
+  pi.on("session_compact", () => resetTps());
+  pi.on("model_select", () => resetTps());
 
   // agent 工具执行后立即刷新 git
   pi.on("tool_result", async () => {
