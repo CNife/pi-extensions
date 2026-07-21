@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-21
+
+### Added
+
+- Herdr 标题同步：在 `session_start` / `agent_end` 轮询会话标题，变更时通过 `herdr pane report-metadata --title` 同步到 herdr pane 边框；自动生成/刷新标题后即时同步。检测 `HERDR_ENV=1` 自动启用，非 herdr 环境静默跳过。覆盖自动生成与手动 `/name` 改名（手动改名在下一回合结束时同步）。
+
 ## [0.3.0] - 2026-07-15
 
 ### Changed

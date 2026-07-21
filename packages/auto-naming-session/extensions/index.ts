@@ -1,5 +1,7 @@
+import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { promisify } from "node:util";
 import type { Model, TextContent } from "@earendil-works/pi-ai";
 import { completeSimple } from "@earendil-works/pi-ai";
 import {
@@ -13,6 +15,45 @@ import {
   hasAutoNamingTitle,
   shouldRefresh,
 } from "./transcript.ts";
+
+// ──── Herdr Sync ───────────────────────────────────────────────
+
+const execFileAsync = promisify(execFile);
+const HERDR_SOURCE = "pi-auto-naming";
+
+function getHerdrPaneId(): string | undefined {
+  if (process.env.HERDR_ENV !== "1") return undefined;
+  return process.env.HERDR_PANE_ID || undefined;
+}
+
+async function syncTitleToHerdr(title: string | undefined): Promise<void> {
+  const paneId = getHerdrPaneId();
+  if (!paneId) return;
+
+  const args = ["pane", "report-metadata", paneId, "--source", HERDR_SOURCE];
+  if (title) {
+    args.push("--title", title);
+  } else {
+    args.push("--clear-title");
+  }
+
+  try {
+    await execFileAsync("herdr", args);
+  } catch {
+    // herdr 未安装、pane 已关闭等——静默忽略
+  }
+}
+
+// 跟踪上次同步到 herdr 的标题，去重避免重复调用
+let lastSyncedTitle: string | undefined;
+
+/** 当前标题与上次同步的不同时同步到 herdr，相同则跳过 */
+async function syncTitleIfChanged(pi: ExtensionAPI): Promise<void> {
+  const current = pi.getSessionName();
+  if (current === lastSyncedTitle) return;
+  lastSyncedTitle = current;
+  await syncTitleToHerdr(current);
+}
 
 // ──── Config ────────────────────────────────────────────────────
 
@@ -303,6 +344,17 @@ function setConfigErrorStatus(ctx: {
 // ──── Entry Point ───────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
+  // herdr 同步：不依赖 auto-naming 配置。
+  // session_info_changed 事件不转发到扩展层，改在 session_start / agent_end
+  // 轮询 getSessionName()，变更时同步；自动改名后在 applyTitle 处即时同步。
+  // 覆盖自动生成与手动 /name（手动改名在下一回合结束时同步）。
+  pi.on("session_start", async () => {
+    void syncTitleIfChanged(pi);
+  });
+  pi.on("agent_end", async () => {
+    void syncTitleIfChanged(pi);
+  });
+
   const config = loadConfig();
   if (!config) {
     pi.on("session_start", (_event, ctx) => {
@@ -331,7 +383,10 @@ export default function (pi: ExtensionAPI) {
       if (!transcript) return;
 
       const title = await generateTitle(ctx, config, transcript, true);
-      if (title) applyTitle(pi, state, title);
+      if (title) {
+        applyTitle(pi, state, title);
+        void syncTitleIfChanged(pi);
+      }
     } catch (err) {
       ctx.ui.notify(
         `Error: ${err instanceof Error ? err.message : String(err)}`,
@@ -355,7 +410,10 @@ export default function (pi: ExtensionAPI) {
       if (!transcript) return;
 
       const title = await generateTitle(ctx, config, transcript, false);
-      if (title) applyTitle(pi, state, title);
+      if (title) {
+        applyTitle(pi, state, title);
+        void syncTitleIfChanged(pi);
+      }
     } catch {
       // 首次生成失败不阻塞，等 agent_end 再试
     }
