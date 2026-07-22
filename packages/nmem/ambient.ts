@@ -17,6 +17,7 @@ import {
   nmemRequest,
   stringValue,
 } from "./client.ts";
+import { loadPluginConfig } from "./config.ts";
 
 // ============================================================================
 // Constants
@@ -28,7 +29,7 @@ const FLUSH_DELAY_MS = 750;
 // nowledge-mem-pi（裸号 0.8.3）与 nmem CLI：三者 source 均为 "pi"，tool_version
 // 是唯一区分点，裸号会混淆（已实测后端只存储不解析，前缀安全）。与
 // package.json version 保持同步。
-const DEFAULT_PLUGIN_VERSION = "pi-nmem/0.4.1";
+const DEFAULT_PLUGIN_VERSION = "pi-nmem/0.5.0";
 
 // ============================================================================
 // Types
@@ -77,6 +78,10 @@ interface SessionManagerLike {
 
 const syncStates = new Map<string, SyncState>();
 const startupContextCache = new Map<string, StartupContextEntry>();
+// Per-session snapshot of the injectContextBundle decision, taken at
+// session_start so a mid-session /nmem-config change takes effect next
+// session (not mid-turn). Mirrors startupContextCache's lifecycle.
+const bundleEnabled = new Map<string, boolean>();
 const syncNotifyWarnings = new Set<string>();
 
 // ============================================================================
@@ -458,15 +463,20 @@ function scheduleFlush(ctx: ExtensionContext, reason: string): void {
 // Start-context injection (REST-ified, 1-level degrade)
 // ============================================================================
 
-function startupGuidance(): string {
+function startupGuidance(bundleInjected: boolean): string {
   const label = hostLabel();
   const source = sourceApp();
+  // The bundle bullet only appears when the bundle was actually injected;
+  // otherwise it would point the LLM at content that isn't there.
+  const bundleBullet = bundleInjected
+    ? "- Context Bundle is injected above. Do not re-read it unless the user asks or the session context changes."
+    : undefined;
   return [
     "## Nowledge Mem Guidance",
     "",
     `Nowledge Mem is available through the installed ${label} skills, the \`nmem\` CLI, and the four nmem tools (nmem_search, nmem_read_thread, nmem_list_threads, nmem_save_memory). Use it when past context would make the work better.`,
     "",
-    "- Context Bundle may already be injected above. Do not re-read it unless the user asks or the session context changes.",
+    ...(bundleBullet ? [bundleBullet] : []),
     "- Search memory when the task resumes prior work, mentions an earlier decision, or would benefit from the user's established preferences and procedures.",
     "- Search threads when the user asks about a previous conversation or when a memory points back to source conversation history.",
     "- Save or update durable decisions, preferences, plans, procedures, learnings, events, or important context. Search first; keep one strong memory rather than several weak duplicates.",
@@ -518,7 +528,10 @@ async function refreshStartupContext(ctx: ExtensionContext): Promise<void> {
 
 function evictStartupContext(ctx: ExtensionContext): void {
   const key = startupContextCacheKey(ctx);
-  if (key) startupContextCache.delete(key);
+  if (key) {
+    startupContextCache.delete(key);
+    bundleEnabled.delete(key);
+  }
 }
 
 async function appendMemoryContext(
@@ -526,10 +539,23 @@ async function appendMemoryContext(
   ctx: ExtensionContext,
 ): Promise<string> {
   const key = startupContextCacheKey(ctx);
-  if (key && !startupContextCache.has(key)) {
-    await refreshStartupContext(ctx);
+  // Enabled is snapshotted at session_start (bundleEnabled) so a mid-session
+  // config change takes effect next session. No-key fallback (unknown session
+  // id) reads config live.
+  const enabled = key
+    ? (bundleEnabled.get(key) ?? false)
+    : loadPluginConfig().injectContextBundle;
+
+  let entry: StartupContextEntry | undefined;
+  if (enabled) {
+    // Race-safe: session_start's refresh may not have settled yet.
+    if (key && !startupContextCache.has(key)) {
+      await refreshStartupContext(ctx);
+    }
+    entry = key ? startupContextCache.get(key) : await readContextBundle();
   }
-  const entry = key ? startupContextCache.get(key) : await readContextBundle();
+
+  const bundleInjected = Boolean(entry?.context);
   const sections: string[] = [];
   if (entry?.context) {
     sections.push(`## Nowledge Mem Context Bundle\n\n${entry.context}`);
@@ -538,7 +564,7 @@ async function appendMemoryContext(
       `## Nowledge Mem Context Bundle\n\n[Nowledge Mem startup context unavailable: ${entry.degradedReason}.]`,
     );
   }
-  sections.push(startupGuidance());
+  sections.push(startupGuidance(bundleInjected));
   return `${systemPrompt}\n\n${sections.join("\n\n")}`;
 }
 
@@ -548,7 +574,10 @@ async function appendMemoryContext(
 
 export function installAmbient(pi: ExtensionAPI): void {
   pi.on("session_start", async (_event, ctx) => {
-    await refreshStartupContext(ctx);
+    const key = startupContextCacheKey(ctx);
+    const enabled = loadPluginConfig().injectContextBundle;
+    if (key) bundleEnabled.set(key, enabled);
+    if (enabled) await refreshStartupContext(ctx);
   });
 
   pi.on("before_agent_start", async (event, ctx) => {
@@ -564,7 +593,8 @@ export function installAmbient(pi: ExtensionAPI): void {
   });
 
   pi.on("session_compact", async (_event, ctx) => {
-    await refreshStartupContext(ctx);
+    const key = startupContextCacheKey(ctx);
+    if (key && bundleEnabled.get(key)) await refreshStartupContext(ctx);
   });
 
   pi.on("session_before_switch", async (event, ctx) => {
