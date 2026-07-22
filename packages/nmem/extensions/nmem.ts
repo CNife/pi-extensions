@@ -23,11 +23,19 @@ import {
   nmemSaveMemory,
   nmemSearch,
   type ReadThreadResult,
+  resolveConfig,
   type SavedMemoryResult,
   type SearchKind,
   type ThreadListResult,
   type ThreadsSearchResult,
 } from "../client.ts";
+import {
+  formatConfigShow,
+  loadPluginConfig,
+  parseConfigSetArgs,
+  pluginConfigPath,
+  savePluginConfig,
+} from "../config.ts";
 import {
   renderListThreadsResult,
   renderReadThreadResult,
@@ -318,10 +326,60 @@ const nmemSaveMemoryTool = defineTool({
   },
 });
 
+/**
+ * /nmem-config - show or set the plugin config (cnife-nmem.json).
+ *
+ * No args prints the current config (plus the read-only backend apiUrl).
+ * `<key> <value>` sets a key (v1: injectContextBundle true/false) and
+ * persists it; the change takes effect at the next session start. Parsing
+ * and formatting live in config.ts (pure, unit-tested); this handler only
+ * does I/O and user feedback.
+ */
+function registerNmemConfigCommand(pi: ExtensionAPI): void {
+  pi.registerCommand("nmem-config", {
+    description:
+      "Show or set nmem plugin config (usage: /nmem-config [injectContextBundle <true|false>])",
+    handler: async (args, ctx) => {
+      const trimmed = args.trim();
+
+      if (!trimmed) {
+        const config = loadPluginConfig();
+        const { apiUrl } = resolveConfig();
+        console.log(
+          formatConfigShow(config, { apiUrl, path: pluginConfigPath() }),
+        );
+        return;
+      }
+
+      const parsed = parseConfigSetArgs(trimmed);
+      if (!parsed.ok) {
+        ctx.ui.notify(parsed.error, "error");
+        return;
+      }
+
+      const next = { ...loadPluginConfig(), [parsed.key]: parsed.value };
+      try {
+        savePluginConfig(next);
+      } catch (error) {
+        ctx.ui.notify(
+          `保存配置失败：${error instanceof Error ? error.message : String(error)}`,
+          "error",
+        );
+        return;
+      }
+      ctx.ui.notify(
+        `${parsed.key} → ${parsed.value}（下次会话启动生效）`,
+        "info",
+      );
+    },
+  });
+}
+
 export default function (pi: ExtensionAPI) {
   pi.registerTool(nmemSearchTool);
   pi.registerTool(nmemReadThreadTool);
   pi.registerTool(nmemListThreadsTool);
   pi.registerTool(nmemSaveMemoryTool);
   installAmbient(pi);
+  registerNmemConfigCommand(pi);
 }
