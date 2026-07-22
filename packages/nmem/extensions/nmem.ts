@@ -345,7 +345,7 @@ function registerNmemConfigCommand(pi: ExtensionAPI): void {
       if (!trimmed) {
         const config = loadPluginConfig();
         const { apiUrl } = resolveConfig();
-        console.log(
+        ctx.ui.notify(
           formatConfigShow(config, { apiUrl, path: pluginConfigPath() }),
         );
         return;
