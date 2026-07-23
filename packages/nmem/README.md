@@ -101,6 +101,7 @@ pi install npm:@cnife/pi-nmem
 ## 参考
 
 - 架构决策：[ADR-0001](../../docs/adr/0001-pi-native-tool-not-axi-cli.md)
+- 工具面精简与 Context Bundle 默认禁用：[ADR-0002](../../docs/adr/0002-nmem-search-minimal-surface.md)
 - 调研：[docs/nmem-usage-patterns.md](./docs/nmem-usage-patterns.md)
 - 术语：[CONTEXT.md](./CONTEXT.md)
 - 许可：MIT；本包 fork 了 nowledge-mem-pi 的 extension 逻辑（ambient sync + 启动注入），版权声明见 [LICENSE](./LICENSE)

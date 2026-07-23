@@ -381,7 +381,7 @@ interface RawThreadsSearchResponse {
 export async function nmemSearch(
   query: string,
   kind: SearchKind = "memories",
-  limit = 10,
+  limit = 5,
 ): Promise<MemoriesSearchResult | ThreadsSearchResult> {
   if (kind === "threads") {
     const data = await nmemRequest<RawThreadsSearchResponse>(
