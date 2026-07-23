@@ -6,7 +6,7 @@
 
 pi 启动时会加载所有已安装技能（`~/.pi/agent/skills/`、`.agents/skills/` 等），并把它们的名称、描述、路径以 `<available_skills>` XML 注入系统提示词。技能一多，系统提示词变长、占用上下文、干扰模型注意力，但用户无法 selectively 关闭某些技能的注入。
 
-本扩展让用户交互式勾选哪些技能【不】被注入，配置持久化，下一条消息即生效。
+本扩展让用户交互式开关技能注入，配置持久化，下一条消息即生效。
 
 ## 安装
 
@@ -16,14 +16,19 @@ pi install npm:@cnife/pi-skills-injection
 
 ## 使用
 
-输入 `/skills-injection` 打开多选界面：
+输入 `/skills-injection` 打开设置列表（与 `/settings`、`/tools` 同款交互）：
 
 - `↑↓` 导航
-- `Space` 切换勾选（勾选 = 排除，不注入到系统提示词）
-- `Enter` 保存
-- `Esc` 取消
+- 输入字符模糊筛选技能名
+- `Space` / `Enter` 切换 `enabled` / `disabled`（即时保存）
+- `Esc` 关闭
 
-已排除的技能排在列表最前。保存后下一条消息即生效，无需 `/reload`。
+语义：
+
+- `enabled` = 注入到系统提示词
+- `disabled` = 不注入
+
+列表按技能名字母序排列。切换后下一条消息即生效，无需 `/reload`。
 
 每次启动会话时，扩展会通知本会话注入了哪些技能、排除了多少个。
 
@@ -37,7 +42,7 @@ pi install npm:@cnife/pi-skills-injection
 }
 ```
 
-也可手动编辑此文件，下一条消息生效。
+`excluded` 是内部存储（disabled 的技能名）。也可手动编辑此文件，下一条消息生效。
 
 ## 技术实现
 
@@ -45,7 +50,7 @@ pi install npm:@cnife/pi-skills-injection
 
 1. **`before_agent_start` 拦截**：读取配置，从 `event.systemPromptOptions.skills` 过滤掉被排除的技能，用 pi 导出的 `formatSkillsForPrompt` 重新渲染 `<available_skills>` 段，正则替换系统提示词中对应的整段。每 turn 读配置文件，所以下一条消息即生效。
 
-2. **`/skills-injection` 命令**：`ctx.ui.custom()` 自定义 TUI 多选列表（参考 pi 的 `question.ts` 例子，加 `Space` 切换勾选）。保存到配置文件。
+2. **`/skills-injection` 命令**：`ctx.ui.custom()` + pi-tui 的 `SettingsList`（对齐官方 `tools.ts` 与 `/settings`），`enableSearch` 做名称模糊筛选。切换即时写配置。
 
 3. **`session_start` 通知**：用 `pi.getCommands()` 获取已加载技能列表，过滤掉被排除的，`ctx.ui.notify` 通知用户。
 

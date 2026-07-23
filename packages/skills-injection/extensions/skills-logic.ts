@@ -1,7 +1,7 @@
 /**
  * skills-injection 的纯逻辑（零运行时 pi 依赖，type-only import Skill）。
  *
- * 编排（event handlers、命令、配置 IO）在 skills-injection.ts。
+ * 编排（event handlers、命令、配置 IO）在 index.ts。
  * 参考 auto-naming-session/transcript.ts 的可测分离模式。
  */
 
@@ -90,20 +90,11 @@ export function computeInjected(
 
 export interface SkillItem {
   name: string;
-  description: string;
 }
 
 /**
- * 排序：已排除的在前，然后按名字字母序。返回新数组，不修改原数组。
+ * 按名字字母序排序。返回新数组，不修改原数组。
  */
-export function sortSkillItems(
-  items: SkillItem[],
-  excluded: ReadonlySet<string>,
-): SkillItem[] {
-  return [...items].sort((a, b) => {
-    const aEx = excluded.has(a.name);
-    const bEx = excluded.has(b.name);
-    if (aEx !== bEx) return aEx ? -1 : 1;
-    return a.name.localeCompare(b.name);
-  });
+export function sortSkillItems(items: SkillItem[]): SkillItem[] {
+  return [...items].sort((a, b) => a.name.localeCompare(b.name));
 }
