@@ -3,7 +3,7 @@
  *
  * 交互式控制哪些技能被注入到 pi 的系统提示词（available_skills）。
  *
- * - /skills-injection 命令：多选勾选要【排除】的技能，持久化到配置文件
+ * - /skills-injection 命令：SettingsList 切换 enabled/disabled，即时持久化
  * - before_agent_start：按配置过滤 skills，重新渲染 <available_skills> 段
  * - session_start：通知用户本会话注入了哪些技能
  *
@@ -20,12 +20,13 @@ import {
   type ExtensionAPI,
   formatSkillsForPrompt,
   getAgentDir,
+  getSettingsListTheme,
 } from "@earendil-works/pi-coding-agent";
 import {
-  Key,
-  matchesKey,
-  visibleWidth,
-  wrapTextWithAnsi,
+  Container,
+  type SettingItem,
+  SettingsList,
+  Text,
 } from "@earendil-works/pi-tui";
 import {
   computeInjected,
@@ -118,9 +119,9 @@ export default function (pi: ExtensionAPI) {
     return { systemPrompt: replaced };
   });
 
-  // /skills-injection 命令：交互式多选
+  // /skills-injection 命令：SettingsList 多开关（对齐 /tools、/settings）
   pi.registerCommand("skills-injection", {
-    description: "配置哪些技能不被注入到系统提示词",
+    description: "配置哪些技能注入到系统提示词",
     handler: async (_args, ctx) => {
       if (ctx.mode !== "tui") {
         ctx.ui.notify("skills-injection 需要交互式终端", "warning");
@@ -132,141 +133,65 @@ export default function (pi: ExtensionAPI) {
       // 只列出会被注入的 skill（disableModelInvocation 的本就不注入，排除无意义）
       const items: SkillItem[] = allSkills
         .filter((s) => !s.disableModelInvocation)
-        .map((s) => ({ name: s.name, description: s.description }));
+        .map((s) => ({ name: s.name }));
 
       if (items.length === 0) {
         ctx.ui.notify("当前没有可注入的技能", "info");
         return;
       }
 
-      const config = loadConfig();
-      const excludedSet = new Set(config.excluded);
-      const sorted = sortSkillItems(items, excludedSet);
+      const excluded = new Set(loadConfig().excluded);
+      const sorted = sortSkillItems(items);
 
-      const result = await ctx.ui.custom<{ excluded: string[] } | null>(
-        (tui, theme, _kb, done) => {
-          let cursor = 0;
-          const selected = sorted.map((it) => excludedSet.has(it.name));
-          let cachedLines: string[] | undefined;
+      await ctx.ui.custom((tui, theme, _kb, done) => {
+        const settingItems: SettingItem[] = sorted.map((it) => ({
+          id: it.name,
+          label: it.name,
+          currentValue: excluded.has(it.name) ? "disabled" : "enabled",
+          values: ["enabled", "disabled"],
+        }));
 
-          const refresh = () => {
-            cachedLines = undefined;
+        const container = new Container();
+        container.addChild(
+          new Text(theme.fg("accent", theme.bold("Skills Injection")), 0, 0),
+        );
+        container.addChild(
+          new Text(theme.fg("dim", "enabled = 注入 · disabled = 不注入"), 0, 0),
+        );
+
+        const settingsList = new SettingsList(
+          settingItems,
+          Math.min(settingItems.length + 2, 15),
+          getSettingsListTheme(),
+          (id, newValue) => {
+            if (newValue === "disabled") {
+              excluded.add(id);
+            } else {
+              excluded.delete(id);
+            }
+            saveConfig({ excluded: [...excluded].sort() });
+          },
+          () => {
+            done(undefined);
+          },
+          { enableSearch: true },
+        );
+
+        container.addChild(settingsList);
+
+        return {
+          render(width: number) {
+            return container.render(width);
+          },
+          invalidate() {
+            container.invalidate();
+          },
+          handleInput(data: string) {
+            settingsList.handleInput?.(data);
             tui.requestRender();
-          };
-
-          const handleInput = (data: string) => {
-            if (matchesKey(data, Key.up)) {
-              cursor = Math.max(0, cursor - 1);
-              refresh();
-              return;
-            }
-            if (matchesKey(data, Key.down)) {
-              cursor = Math.min(sorted.length - 1, cursor + 1);
-              refresh();
-              return;
-            }
-            if (data === " ") {
-              selected[cursor] = !selected[cursor];
-              refresh();
-              return;
-            }
-            if (matchesKey(data, Key.enter)) {
-              done({
-                excluded: sorted
-                  .filter((_, i) => selected[i])
-                  .map((it) => it.name),
-              });
-              return;
-            }
-            if (matchesKey(data, Key.escape)) {
-              done(null);
-              return;
-            }
-          };
-
-          const render = (width: number): string[] => {
-            if (cachedLines) return cachedLines;
-            const lines: string[] = [];
-            const renderWidth = Math.max(1, width);
-
-            const addWrapped = (text: string) => {
-              lines.push(...wrapTextWithAnsi(text, renderWidth));
-            };
-            const addWrappedWithPrefix = (prefix: string, text: string) => {
-              const prefixWidth = visibleWidth(prefix);
-              if (prefixWidth >= renderWidth) {
-                addWrapped(prefix + text);
-                return;
-              }
-              const wrapped = wrapTextWithAnsi(text, renderWidth - prefixWidth);
-              const cont = " ".repeat(prefixWidth);
-              for (let i = 0; i < wrapped.length; i++) {
-                lines.push(`${i === 0 ? prefix : cont}${wrapped[i]}`);
-              }
-            };
-
-            lines.push(theme.fg("accent", "─".repeat(renderWidth)));
-            addWrappedWithPrefix(
-              " ",
-              theme.fg("text", "skills-injection：勾选要【排除】的技能"),
-            );
-            addWrappedWithPrefix(
-              " ",
-              theme.fg("dim", "↑↓ 导航 · Space 切换 · Enter 保存 · Esc 取消"),
-            );
-            lines.push("");
-
-            for (let i = 0; i < sorted.length; i++) {
-              const item = sorted[i];
-              const isCursor = i === cursor;
-              const mark = selected[i] ? "[x]" : "[ ]";
-              const prefix = isCursor ? theme.fg("accent", "> ") : "  ";
-              const color = selected[i] ? "warning" : "text";
-              addWrappedWithPrefix(
-                prefix,
-                theme.fg(color, `${mark} ${item.name}`),
-              );
-              if (item.description) {
-                addWrappedWithPrefix(
-                  "     ",
-                  theme.fg("muted", item.description),
-                );
-              }
-            }
-
-            lines.push(theme.fg("accent", "─".repeat(renderWidth)));
-            cachedLines = lines;
-            return lines;
-          };
-
-          return {
-            render,
-            invalidate: () => {
-              cachedLines = undefined;
-            },
-            handleInput,
-          };
-        },
-      );
-
-      if (!result) {
-        ctx.ui.notify("已取消", "info");
-        return;
-      }
-
-      const newExcluded = result.excluded;
-      const oldSet = new Set(config.excluded);
-      saveConfig({ excluded: newExcluded });
-
-      const newlyExcluded = newExcluded.filter((n) => !oldSet.has(n)).length;
-      const newlyRestored = config.excluded.filter(
-        (n) => !new Set(newExcluded).has(n),
-      ).length;
-
-      const parts: string[] = [`排除 ${newExcluded.length} 个技能`];
-      if (newlyExcluded > 0) parts.push(`新增排除 ${newlyExcluded}`);
-      if (newlyRestored > 0) parts.push(`恢复 ${newlyRestored}`);
-      ctx.ui.notify(`${parts.join("，")}，下一条消息生效`, "info");
+          },
+        };
+      });
     },
   });
 }

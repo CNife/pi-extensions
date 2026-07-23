@@ -219,38 +219,19 @@ test("computeInjected: 排除不存在的 name 不影响", () => {
 // sortSkillItems
 // ============================================================================
 
-test("sortSkillItems: 已排除在前，然后字母序", () => {
-  const items = [
-    { name: "zeta", description: "" },
-    { name: "alpha", description: "" },
-    { name: "mid", description: "" },
-  ];
-  const sorted = sortSkillItems(items, new Set(["mid", "zeta"]));
+test("sortSkillItems: 纯字母序", () => {
+  const items = [{ name: "zeta" }, { name: "alpha" }, { name: "mid" }];
+  const sorted = sortSkillItems(items);
   deepStrictEqual(
     sorted.map((i) => i.name),
-    ["mid", "zeta", "alpha"],
-  );
-});
-
-test("sortSkillItems: 无排除时纯字母序", () => {
-  const items = [
-    { name: "zeta", description: "" },
-    { name: "alpha", description: "" },
-  ];
-  const sorted = sortSkillItems(items, new Set());
-  deepStrictEqual(
-    sorted.map((i) => i.name),
-    ["alpha", "zeta"],
+    ["alpha", "mid", "zeta"],
   );
 });
 
 test("sortSkillItems: 不修改原数组", () => {
-  const items = [
-    { name: "b", description: "" },
-    { name: "a", description: "" },
-  ];
+  const items = [{ name: "b" }, { name: "a" }];
   const original = items.map((i) => i.name);
-  sortSkillItems(items, new Set(["a"]));
+  sortSkillItems(items);
   deepStrictEqual(
     items.map((i) => i.name),
     original,
