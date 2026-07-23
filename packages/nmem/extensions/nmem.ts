@@ -72,7 +72,7 @@ const nmemSearchTool = defineTool({
     ),
     limit: Type.Optional(
       Type.Number({
-        description: "Maximum results to return (default 10)",
+        description: "Maximum results to return (default 5)",
       }),
     ),
   }),
