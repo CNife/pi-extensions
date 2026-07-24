@@ -246,7 +246,9 @@ const nmemSaveMemoryTool = defineTool({
     "is provided. Labels are create-time init annotation only - existing",
     "memory labels will not change on update.",
   ].join(" "),
-  promptGuidelines: [],
+  promptGuidelines: [
+    "Creating a new memory with nmem_save_memory (no id)? Search nmem_search for the same topic first; if a related memory exists, update it (pass its id) instead of creating a near-duplicate.",
+  ],
   parameters: Type.Object({
     title: Type.String({
       description: "Memory title",

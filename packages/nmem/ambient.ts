@@ -29,7 +29,7 @@ const FLUSH_DELAY_MS = 750;
 // nowledge-mem-pi（裸号 0.8.3）与 nmem CLI：三者 source 均为 "pi"，tool_version
 // 是唯一区分点，裸号会混淆（已实测后端只存储不解析，前缀安全）。与
 // package.json version 保持同步。
-const DEFAULT_PLUGIN_VERSION = "pi-nmem/0.6.1";
+const DEFAULT_PLUGIN_VERSION = "pi-nmem/0.6.2";
 
 // ============================================================================
 // Types
