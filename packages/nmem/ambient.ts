@@ -463,9 +463,10 @@ function scheduleFlush(ctx: ExtensionContext, reason: string): void {
 // Start-context injection (REST-ified, 1-level degrade)
 // ============================================================================
 
+// 指引文本分层：ambient 承载策略/触发，须自包含（面向所有用户，不依赖外部 AGENTS.md）；
+// per-tool promptGuidelines 只留"描述/参数里没有的跨工具机制链接"（框架扁平汇总到 Guidelines 段）。
 function startupGuidance(bundleInjected: boolean): string {
   const label = hostLabel();
-  const source = sourceApp();
   // The bundle bullet only appears when the bundle was actually injected;
   // otherwise it would point the LLM at content that isn't there.
   const bundleBullet = bundleInjected
@@ -474,14 +475,12 @@ function startupGuidance(bundleInjected: boolean): string {
   return [
     "## Nowledge Mem Guidance",
     "",
-    `Nowledge Mem is available through the installed ${label} skills, the \`nmem\` CLI, and the four nmem tools (nmem_search, nmem_read_thread, nmem_list_threads, nmem_save_memory). Use it when past context would make the work better.`,
+    `Nowledge Mem is available through the installed ${label} skills, the \`nmem\` CLI, and the four nmem tools (nmem_search, nmem_read_thread, nmem_list_threads, nmem_save_memory). Use it when past context would make the work better. The ${label} extension automatically syncs your conversation as a thread; you need not save conversation history manually.`,
     "",
     ...(bundleBullet ? [bundleBullet] : []),
     "- Search memory when the task resumes prior work, mentions an earlier decision, or would benefit from the user's established preferences and procedures.",
     "- Search threads when the user asks about a previous conversation or when a memory points back to source conversation history.",
     "- Save or update durable decisions, preferences, plans, procedures, learnings, events, or important context. Search first; keep one strong memory rather than several weak duplicates.",
-    `- Create an explicit handoff thread only when the user asks for a checkpoint. The ${label} extension already syncs completed ${label} conversation history automatically.`,
-    `- Keep provenance as \`source_app=${source}\`.`,
     "",
   ].join("\n");
 }
