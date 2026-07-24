@@ -55,10 +55,7 @@ const nmemSearchTool = defineTool({
     "structure - no debug metadata. Results are real, not mocked.",
   ].join(" "),
   promptGuidelines: [
-    "Search before resuming prior work, retrospectives, asking 'why did we choose X', or debugging that resembles a past root cause",
-    "Use kind=threads to find past conversations (the current session is also synced as a thread); use kind=memories (default) for distilled knowledge",
     "After a threads hit, pass the returned id directly to nmem_read_thread's thread_id parameter to read the full thread",
-    "To browse recent threads by time (no query), use nmem_list_threads instead of searching",
   ],
   parameters: Type.Object({
     query: Type.String({
@@ -130,10 +127,7 @@ const nmemReadThreadTool = defineTool({
     "Follow the returned `offset=N` hint to continue reading. Do not guess",
     "or fabricate message counts.",
   ].join(" "),
-  promptGuidelines: [
-    "Read full threads surfaced by nmem_search; auto-paginated, follow the returned offset=N hint, do not guess counts",
-    "Use when a thread hit in nmem_search contains useful information that was not fully shown",
-  ],
+  promptGuidelines: [],
   parameters: Type.Object({
     thread_id: Type.String({
       description: "Thread ID (pi- prefix) to read",
@@ -189,7 +183,7 @@ const nmemListThreadsTool = defineTool({
   promptGuidelines: [
     "Use nmem_list_threads to browse recent threads by time; use nmem_search(kind=threads) to find threads by topic (list needs no query, search needs one)",
     "Screen by `summary` to pick threads worth reading, then pass the id to nmem_read_thread for full messages",
-    "`date` is the import date (day-grained) for coarse filtering; for precise time splitting (e.g. a 04:00 workday window) use nmem_read_thread's `messages[0].timestamp`",
+    "For precise time splitting (e.g. a 04:00 workday window), use nmem_read_thread's `messages[0].timestamp`.",
   ],
   parameters: Type.Object({
     limit: Type.Optional(
@@ -252,13 +246,7 @@ const nmemSaveMemoryTool = defineTool({
     "is provided. Labels are create-time init annotation only - existing",
     "memory labels will not change on update.",
   ].join(" "),
-  promptGuidelines: [
-    "Save durable decisions, preferences, procedures, and learnings when the session yields them - not routine fixes or in-progress work",
-    "Search first (nmem_search) to avoid creating duplicate memories",
-    "Non-empty id updates, empty/missing id creates",
-    "One strong memory beats many weak ones - consolidate related knowledge",
-    "Labels are create-time init annotation only; existing memory labels will not change on update",
-  ],
+  promptGuidelines: [],
   parameters: Type.Object({
     title: Type.String({
       description: "Memory title",
