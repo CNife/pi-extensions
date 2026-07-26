@@ -22,6 +22,7 @@ import {
   formatSkillsForPrompt,
   getAgentDir,
   getSettingsListTheme,
+  parseFrontmatter,
 } from "@earendil-works/pi-coding-agent";
 import {
   Container,
@@ -35,6 +36,7 @@ import {
   formatStartupSummary,
   parseConfig,
   type SkillItem,
+  type SkillLike,
   type SkillsInjectionConfig,
   sortSkillItems,
   summarizeSkills,
@@ -77,6 +79,25 @@ function loadConfig(): SkillsInjectionConfig {
   return parseConfig(parsed);
 }
 
+function loadSkillsFromCommands(pi: ExtensionAPI): SkillLike[] {
+  return pi
+    .getCommands()
+    .filter((c) => c.source === "skill")
+    .map((c) => {
+      const name = c.name.replace(/^skill:/, "");
+      let disableModelInvocation = false;
+      try {
+        const raw = readFileSync(c.sourceInfo.path, "utf-8");
+        const { frontmatter } = parseFrontmatter(raw);
+        disableModelInvocation =
+          frontmatter["disable-model-invocation"] === true;
+      } catch {
+        // 读失败时按可注入处理
+      }
+      return { name, disableModelInvocation };
+    });
+}
+
 // ──── Entry Point ───────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
@@ -84,7 +105,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     if (!ctx.hasUI) return;
 
-    const skills = ctx.getSystemPromptOptions().skills ?? [];
+    const skills = loadSkillsFromCommands(pi);
     if (skills.length === 0) return;
 
     const config = loadConfig();
