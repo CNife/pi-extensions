@@ -2,6 +2,14 @@
 
 CNife 的 [pi](https://pi.dev) agent 扩展集合。
 
+仓库分三层：
+
+| 层 | 目录 | 说明 |
+| --- | --- | --- |
+| 产品 | [`packages/`](packages/) | 可发布的 npm 包（`@cnife/pi-*`），进 workspaces |
+| 个人 | [`personal/`](personal/) | 与全局扩展目录同构；不进 workspaces、不 publish |
+| 退役 | [`archive/`](archive/) | 曾为产品、现停更的包，仅供查阅 |
+
 ## 包
 
 | 包 | 说明 |
@@ -29,6 +37,17 @@ pi install npm:@cnife/pi-inline-skill-completion
 pi install npm:@cnife/pi-miscs
 pi install npm:@cnife/pi-nmem
 ```
+
+## personal
+
+个人扩展（文件型软链 / 包型本地路径）用同步脚本挂到本机：
+
+```bash
+node scripts/sync-personal.mjs --dry-run
+node scripts/sync-personal.mjs
+```
+
+详见 [personal/README.md](personal/README.md)。分层决策见 [ADR 0003](docs/adr/0003-personal-layer-miscs-retirement.md)。
 
 ## License
 

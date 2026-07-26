@@ -16,6 +16,10 @@ _避免_：把技能和扩展混为一谈
 npm workspace 包，发布单元（`@cnife/pi-*`）。一个包可含多个扩展和技能。发布层概念，不等于扩展。
 _避免_：模块、子项目
 
+**personal**（个人扩展树）：
+`personal/` 目录——与 pi 全局扩展目录同构（顶层 `.ts` 或子目录入口），非发布单元，不进 workspaces。用同步脚本按条目挂到本机（文件型软链、包型本地路径）。
+_避免_：把 personal 当成第二个 packages / lab
+
 **工具** (tool)：
 扩展通过 `registerTool` 注册的、LLM 可调用的能力（如 `executePython`）。由模型主动调用。
 _避免_：函数、API
@@ -46,6 +50,6 @@ provider 下的具体模型（如 `gpt-4o`、`claude-3-5-sonnet`）。扩展通�
 ## Example Dialogue
 
 > **Dev**: 加个新扩展显示 token 用量。
-> **Agent**: 这是扩展（挂 `turn_end` 往 footer 写）还是技能（给 agent 的分析指令）？
-> **Dev**: 扩展。
-> **Agent**: 那 `packages/` 下建个包，`extensions/` 里写 `.ts`，`registerTool` 不需要，直接写 footer。
+> **Agent**: 这是扩展（挂 `turn_end` 往 footer 写）还是技能（给 agent 的分析指令）？要不要发布成产品包？
+> **Dev**: 扩展，要发布。
+> **Agent**: 那 `packages/` 下建个包，`extensions/` 里写 `.ts`；若只是自用参考则进 `personal/`。

@@ -1,0 +1,23 @@
+{
+  "name": "personal-advisor-adapter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Personal adapter for @juicesharp/rpiv-advisor with streaming rendering",
+  "keywords": [
+    "pi-package"
+  ],
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ]
+  },
+  "dependencies": {
+    "@juicesharp/rpiv-advisor": "^2.1.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  }
+}
