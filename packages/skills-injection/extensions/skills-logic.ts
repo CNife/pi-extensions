@@ -121,10 +121,10 @@ export function summarizeSkills(
   };
 }
 
-/** 英文启动说明：三类技能名 + 数量（多行一条 notify）。 */
+/** 英文启动说明：三类技能名 + 数量（多行一条 notify）。空类列表位写 0。 */
 export function formatStartupSummary(summary: SkillsSummary): string {
   const fmt = (label: string, names: string[]) => {
-    const list = names.length > 0 ? names.join(", ") : "—";
+    const list = names.length > 0 ? names.join(", ") : "0";
     return `${label} (${names.length}): ${list}`;
   };
   return [

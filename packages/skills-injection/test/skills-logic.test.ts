@@ -221,7 +221,7 @@ test("summarizeSkills: excluded 命中 non-injectable 仍归 non-injectable", ()
   );
 });
 
-test("formatStartupSummary: 多行英文 + 空类破折号", () => {
+test("formatStartupSummary: 多行英文 + 空类写 0", () => {
   const text = formatStartupSummary({
     injected: ["a", "b"],
     forbidden: [],
@@ -232,7 +232,7 @@ test("formatStartupSummary: 多行英文 + 空类破折号", () => {
     [
       "Skills injection",
       "injected (2): a, b",
-      "forbidden (0): —",
+      "forbidden (0): 0",
       "non-injectable (1): z",
     ].join("\n"),
   );

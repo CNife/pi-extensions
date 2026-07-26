@@ -22,6 +22,7 @@ import {
   formatSkillsForPrompt,
   getAgentDir,
   getSettingsListTheme,
+  loadSkills,
   parseFrontmatter,
 } from "@earendil-works/pi-coding-agent";
 import {
@@ -79,12 +80,34 @@ function loadConfig(): SkillsInjectionConfig {
   return parseConfig(parsed);
 }
 
-function loadSkillsFromCommands(pi: ExtensionAPI): SkillLike[] {
+/**
+ * 解析当前会话技能列表，并尽量拿到 disableModelInvocation。
+ *
+ * 1. 列表以 pi.getCommands() 为准（含会话已加载的全部 skill 命令）
+ * 2. 标志优先用 loadSkills() API（Skill.disableModelInvocation）
+ * 3. API 未覆盖到的技能（如 resources_discover 额外路径）才读文件 frontmatter
+ * 4. 读文件失败时静默按可注入处理
+ */
+function resolveSkills(pi: ExtensionAPI, cwd: string): SkillLike[] {
+  const fromApi = new Map(
+    loadSkills({
+      cwd,
+      agentDir: getAgentDir(),
+      skillPaths: [],
+      includeDefaults: true,
+    }).skills.map((s) => [s.name, s.disableModelInvocation] as const),
+  );
+
   return pi
     .getCommands()
     .filter((c) => c.source === "skill")
     .map((c) => {
       const name = c.name.replace(/^skill:/, "");
+      const apiFlag = fromApi.get(name);
+      if (apiFlag !== undefined) {
+        return { name, disableModelInvocation: apiFlag };
+      }
+
       let disableModelInvocation = false;
       try {
         const raw = readFileSync(c.sourceInfo.path, "utf-8");
@@ -92,7 +115,7 @@ function loadSkillsFromCommands(pi: ExtensionAPI): SkillLike[] {
         disableModelInvocation =
           frontmatter["disable-model-invocation"] === true;
       } catch {
-        // 读失败时按可注入处理
+        // 读失败时静默按可注入处理
       }
       return { name, disableModelInvocation };
     });
@@ -105,7 +128,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     if (!ctx.hasUI) return;
 
-    const skills = loadSkillsFromCommands(pi);
+    const skills = resolveSkills(pi, ctx.cwd);
     if (skills.length === 0) return;
 
     const config = loadConfig();
@@ -134,7 +157,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("skills-injection", {
     description: "Configure which skills inject into the system prompt",
     handler: async (_args, ctx) => {
-      if (ctx.mode !== "tui") {
+      if (!ctx.hasUI) {
         ctx.ui.notify(
           "skills-injection requires an interactive TUI",
           "warning",
@@ -142,8 +165,8 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
-      const options = ctx.getSystemPromptOptions();
-      const allSkills = options.skills ?? [];
+      // 与 session_start 同源：命令列表 + loadSkills API（不再依赖不存在的 getSystemPromptOptions）
+      const allSkills = resolveSkills(pi, ctx.cwd);
       // 只列出会被注入的 skill（disableModelInvocation 的本就不注入，排除无意义）
       const items: SkillItem[] = allSkills
         .filter((s) => !s.disableModelInvocation)
