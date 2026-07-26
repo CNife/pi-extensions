@@ -1,11 +1,11 @@
 {
   "name": "@cnife/pi-miscs",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": false,
   "keywords": [
     "pi-package"
   ],
-  "description": "Miscellaneous small pi extensions (debug, exit)",
+  "description": "[Deprecated] Miscellaneous small pi extensions (debug, exit); now maintained as personal extensions in this repo, no longer distributed as an installable package",
   "homepage": "https://github.com/CNife/pi-extensions#readme",
   "bugs": {
     "url": "https://github.com/CNife/pi-extensions/issues"

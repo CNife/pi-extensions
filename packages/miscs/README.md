@@ -1,5 +1,7 @@
 # @cnife/pi-miscs
 
+> ⚠️ Deprecated. 两个小工具已迁入仓库 `personal/` 自用，不再以安装包分发。
+
 pi 杂项小工具集合。
 
 ## 包含
