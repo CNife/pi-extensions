@@ -1,0 +1,74 @@
+{
+  "skills": [
+    {
+      "name": "ask-matt",
+      "path": "skills/engineering/ask-matt",
+      "repo": "mattpocock/skills"
+    },
+    {
+      "name": "code-review",
+      "path": "skills/engineering/code-review",
+      "repo": "mattpocock/skills"
+    },
+    {
+      "name": "codebase-design",
+      "path": "skills/engineering/codebase-design",
+      "repo": "mattpocock/skills"
+    },
+    {
+      "name": "domain-modeling",
+      "path": "skills/engineering/domain-modeling",
+      "repo": "mattpocock/skills"
+    },
+    {
+      "name": "grill-me",
+      "path": "skills/productivity/grill-me",
+      "repo": "mattpocock/skills"
+    },
+    {
+      "name": "grill-with-docs",
+      "path": "skills/engineering/grill-with-docs",
+      "repo": "mattpocock/skills"
+    },
+    {
+      "name": "grilling",
+      "path": "skills/productivity/grilling",
+      "repo": "mattpocock/skills"
+    },
+    {
+      "name": "implement",
+      "path": "skills/engineering/implement",
+      "repo": "mattpocock/skills"
+    },
+    {
+      "name": "improve-codebase-architecture",
+      "path": "skills/engineering/improve-codebase-architecture",
+      "repo": "mattpocock/skills"
+    },
+    {
+      "name": "prototype",
+      "path": "skills/engineering/prototype",
+      "repo": "mattpocock/skills"
+    },
+    {
+      "name": "research",
+      "path": "skills/engineering/research",
+      "repo": "mattpocock/skills"
+    },
+    {
+      "name": "tdd",
+      "path": "skills/engineering/tdd",
+      "repo": "mattpocock/skills"
+    },
+    {
+      "name": "to-spec",
+      "path": "skills/engineering/to-spec",
+      "repo": "mattpocock/skills"
+    },
+    {
+      "name": "to-tickets",
+      "path": "skills/engineering/to-tickets",
+      "repo": "mattpocock/skills"
+    }
+  ]
+}
