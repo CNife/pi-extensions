@@ -69,6 +69,11 @@
       "name": "to-tickets",
       "path": "skills/engineering/to-tickets",
       "repo": "mattpocock/skills"
+    },
+    {
+      "name": "wayfinder",
+      "path": "skills/engineering/wayfinder",
+      "repo": "mattpocock/skills"
     }
   ]
 }
