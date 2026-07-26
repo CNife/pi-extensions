@@ -23,24 +23,26 @@
 
 `personal/` **不是** lab/示例集第二命名；新产品不得误扔进 personal，personal 也不得进发布流水线。
 
-### 按条目同步（加载分叉丙）
+### 按条目同步（软链同构）
 
-`scripts/sync-personal.mjs` 扫描 `personal/` 顶层：
+`scripts/sync-personal.mjs` 扫描 `personal/` 顶层，一律软链进 `~/.pi/agent/extensions/`：
 
-- **文件型**（`*.ts`）：软链到 `~/.pi/agent/extensions/`。
-- **包型**（子目录含 `package.json`）：在目录内安装依赖，并将**绝对路径**写入 settings `packages`；**禁止**再软链同一条目。
+- **文件型**（`*.ts`）：软链文件。
+- **包型**（子目录含 `package.json`）：先在目录内 `npm install`，再软链**整个目录**。
 - 绝不整树替换全局扩展目录，以便 herdr 等 local-only 文件继续留在本机且不进 git。
 - 对已存在的非链接冲突失败并提示。
+- **不修改** `settings.json`。pi 会自动发现 `extensions/` 下的包目录（并跳过 `node_modules`）。
 
-### pi 本地安装与依赖（实现修正）
+issue 原文「加载分叉丙」曾要求包型走 settings 本地路径、禁止软链。本机验证后：目录软链即可被 pi 加载，改 settings 无必要；双加载风险来自「settings 与 extensions 同时挂同一包」，只软链则无此问题。以 territory 为准回写。
+
+### 依赖安装
 
 issue 原文假设「本地路径 `pi install` 会装依赖」。对照当前
 `@earendil-works/pi-coding-agent` 的 `DefaultPackageManager.install()`：
 对 `type === "local"` 仅校验路径存在后返回，**不**调用 `npm install`。
-npm/git 源才会 `--omit=dev` 安装。
 
 因此：**包型依赖安装由同步脚本负责**（`npm install --omit=dev --omit=peer`），
-`pi install <path>` / 直接写 settings 只负责注册加载路径。此修正记入 personal README 与 issue 评论。
+软链只负责让 pi 发现入口。依赖落在 `personal/<pkg>/node_modules`（gitignore）。
 
 ### miscs 两阶段退役
 
@@ -51,9 +53,9 @@ npm/git 源才会 `--omit=dev` 安装。
 
 ### 顾问小包
 
-- 形态：`personal/advisor-adapter/` 文件夹小包，`dependencies` 声明 `@juicesharp/rpiv-advisor`。
+- 形态：`personal/advisor-adapter/` 文件夹小包，`dependencies` 声明 `@juicesharp/rpiv-advisor`；软链到 `extensions/advisor-adapter`。
 - 入口代理 `registerTool`：拦截 advisor 工具，注入流式 execute + renderCall/renderResult；原 factory 其余命令与生命周期透传。
-- settings：**移除**原版顾问独立扩展条目；依赖仅在小包 `node_modules`，原 factory 当库调用。
+- 不要在 settings 再挂原版顾问独立扩展；依赖仅在小包 `node_modules`，原 factory 当库调用（用户自行 `pi remove` 旧条目）。
 - **脆点**：不得不 deep-import 上游内部模块（`advisor/messages.ts` 等）。上游内部 API **无兼容承诺**；可工作但不稳定。
 
 ### 不进仓
@@ -64,7 +66,7 @@ dcg-guard、herdr 状态/生成物、subagent 残留配置、密钥与会话数�
 
 - 目录表达产品 vs 个人 vs 退役，避免每次新扩展争论放哪。
 - 个人树进 git → 多机拉仓 + 跑脚本即可；按条目软链保留 local-only。
-- 包型走本地路径注册 + 脚本装依赖，避免「扩展碰巧躺在 agent 目录旁」的相对深路径。
+- 包型软链目录 + 脚本装依赖，import 走包内 `node_modules`，避免「扩展碰巧躺在 agent 目录旁」的相对深路径。
 - miscs 退役给 registry 最终废弃信号，源码进 archive 可查。
 
 ## 考虑过的选项
@@ -73,7 +75,8 @@ dcg-guard、herdr 状态/生成物、subagent 残留配置、密钥与会话数�
 - **personal 也进 workspaces / 发布**：rejected——付发布税，违背分层。
 - **lab 命名**：rejected——已拍板 `personal`。
 - **顾问做成 @cnife 产品包或推上游**：out of scope。
-- **仅软链顾问适配器、继续相对深 import 全局 npm**：rejected 作为正式方案——不可复现；改为包依赖（内部 deep import 仍标明脆点）。
+- **settings 注册本地路径、禁止软链包目录**（issue 分叉丙）：rejected——本机验证目录软链即被 pi 发现，改 settings 多余，且易与 extensions 双挂。
+- **仅软链单文件适配器、继续相对深 import 全局 npm**：rejected 作为正式方案——不可复现；改为包目录 + 包依赖（内部 deep import 仍标明脆点）。
 
 ## 后果
 

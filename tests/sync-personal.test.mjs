@@ -12,14 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it, beforeEach, afterEach } from "node:test";
 
-import {
-  planSync,
-  updateSettingsPackages,
-  applyLink,
-  applySettingsMutation,
-  assertNoStandalonePackageExtension,
-  DEFAULT_REMOVE_SOURCES,
-} from "../scripts/sync-personal.mjs";
+import { planSync, applyLink, runSync } from "../scripts/sync-personal.mjs";
 
 describe("planSync", () => {
   let root;
@@ -38,7 +31,7 @@ describe("planSync", () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it("maps top-level .ts to link action under extensions/", () => {
+  it("maps top-level .ts to link under extensions/", () => {
     writeFileSync(join(personal, "exit.ts"), "export default () => {}");
     const plan = planSync(personal, agent);
     assert.equal(plan.length, 1);
@@ -48,12 +41,14 @@ describe("planSync", () => {
         type: plan[0].type,
         action: plan[0].action,
         target: plan[0].target,
+        installDeps: plan[0].installDeps,
       },
       {
         name: "exit.ts",
         type: "file",
         action: "link",
         target: join(agent, "extensions", "exit.ts"),
+        installDeps: undefined,
       },
     );
   });
@@ -66,7 +61,7 @@ describe("planSync", () => {
     assert.equal(plan[0].name, "exit.ts");
   });
 
-  it("maps directory with package.json to install-local (no link)", () => {
+  it("maps package dir to link with installDeps (no settings action)", () => {
     const pkg = join(personal, "advisor-adapter");
     mkdirSync(pkg);
     writeFileSync(
@@ -75,10 +70,11 @@ describe("planSync", () => {
     );
     const plan = planSync(personal, agent);
     assert.equal(plan.length, 1);
-    assert.equal(plan[0].action, "install-local");
+    assert.equal(plan[0].action, "link");
     assert.equal(plan[0].type, "package");
-    assert.equal(plan[0].settingsSource, pkg);
-    assert.equal(plan[0].target, undefined);
+    assert.equal(plan[0].installDeps, true);
+    assert.equal(plan[0].target, join(agent, "extensions", "advisor-adapter"));
+    assert.equal(plan[0].settingsSource, undefined);
   });
 
   it("skips directory without package.json", () => {
@@ -94,39 +90,6 @@ describe("planSync", () => {
     writeFileSync(join(personal, "notes.txt"), "x");
     const plan = planSync(personal, agent);
     assert.equal(plan[0].action, "skip");
-  });
-});
-
-describe("updateSettingsPackages", () => {
-  it("adds absolute local path, dedupes, removes advisor and miscs sources", () => {
-    const local = "/home/me/code/pi-extensions/personal/advisor-adapter";
-    const settings = {
-      packages: [
-        "npm:@cnife/pi-nmem",
-        "npm:@juicesharp/rpiv-advisor",
-        "npm:@cnife/pi-miscs",
-        local,
-      ],
-    };
-    const next = updateSettingsPackages(settings, {
-      add: [local],
-      remove: DEFAULT_REMOVE_SOURCES,
-    });
-    assert.deepEqual(next.packages, ["npm:@cnife/pi-nmem", local]);
-  });
-
-  it("preserves object-form package entries when not removed", () => {
-    const settings = {
-      packages: [{ source: "npm:foo", extensions: ["a.ts"] }, "npm:bar"],
-    };
-    const next = updateSettingsPackages(settings, {
-      add: ["/abs/pkg"],
-      remove: ["npm:bar"],
-    });
-    assert.deepEqual(next.packages, [
-      { source: "npm:foo", extensions: ["a.ts"] },
-      "/abs/pkg",
-    ]);
   });
 });
 
@@ -173,81 +136,50 @@ describe("applyLink", () => {
     assert.equal(r.status, "would-create");
     assert.equal(existsSync(target), false);
   });
-});
 
-describe("applySettingsMutation", () => {
-  let root;
-  let settingsPath;
-
-  beforeEach(() => {
-    root = mkdtempSync(join(tmpdir(), "sync-settings-"));
-    settingsPath = join(root, "settings.json");
-    writeFileSync(
-      settingsPath,
-      `${JSON.stringify(
-        {
-          packages: ["npm:@cnife/pi-nmem", "npm:@cnife/pi-miscs"],
-        },
-        null,
-        2,
-      )}\n`,
-    );
-  });
-
-  afterEach(() => {
-    rmSync(root, { recursive: true, force: true });
-  });
-
-  it("updates packages and writes bak-sync once", () => {
-    const local = "/tmp/personal/advisor-adapter";
-    const r = applySettingsMutation(settingsPath, {
-      add: [local],
-      remove: DEFAULT_REMOVE_SOURCES,
-    });
-    assert.equal(r.status, "updated");
-    const next = JSON.parse(readFileSync(settingsPath, "utf-8"));
-    assert.deepEqual(next.packages, ["npm:@cnife/pi-nmem", local]);
-    assert.ok(existsSync(`${settingsPath}.bak-sync`));
-  });
-
-  it("dry-run does not write", () => {
-    const before = readFileSync(settingsPath, "utf-8");
-    const r = applySettingsMutation(
-      settingsPath,
-      { add: ["/x"], remove: [] },
-      { dryRun: true },
-    );
-    assert.equal(r.status, "would-update");
-    assert.equal(readFileSync(settingsPath, "utf-8"), before);
-    assert.equal(existsSync(`${settingsPath}.bak-sync`), false);
+  it("links a package directory", () => {
+    const pkg = join(root, "advisor-adapter");
+    mkdirSync(pkg);
+    writeFileSync(join(pkg, "package.json"), "{}");
+    const dirTarget = join(root, "extensions", "advisor-adapter");
+    const r = applyLink({ name: "advisor-adapter", source: pkg, target: dirTarget });
+    assert.equal(r.status, "created");
+    assert.ok(lstatSync(dirTarget).isSymbolicLink());
   });
 });
 
-describe("assertNoStandalonePackageExtension", () => {
+describe("runSync dry-run", () => {
   let root;
+  let personal;
   let agent;
 
   beforeEach(() => {
-    root = mkdtempSync(join(tmpdir(), "sync-standalone-"));
-    agent = root;
+    root = mkdtempSync(join(tmpdir(), "sync-run-"));
+    personal = join(root, "personal");
+    agent = join(root, "agent");
+    mkdirSync(personal);
     mkdirSync(join(agent, "extensions"), { recursive: true });
+    writeFileSync(join(personal, "exit.ts"), "export default () => {}");
+    const pkg = join(personal, "advisor-adapter");
+    mkdirSync(pkg);
+    writeFileSync(
+      join(pkg, "package.json"),
+      JSON.stringify({ name: "personal-advisor-adapter", private: true }),
+    );
   });
 
   afterEach(() => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it("passes when absent", () => {
-    assert.doesNotThrow(() =>
-      assertNoStandalonePackageExtension(agent, "advisor-adapter"),
-    );
-  });
-
-  it("throws when regular file present", () => {
-    writeFileSync(join(agent, "extensions", "advisor-adapter.ts"), "// old");
-    assert.throws(
-      () => assertNoStandalonePackageExtension(agent, "advisor-adapter"),
-      /old standalone extension/,
-    );
+  it("dry-run does not mutate filesystem or invent settings writes", () => {
+    const out = runSync({ personalDir: personal, agentDir: agent, dryRun: true });
+    assert.equal(out.dryRun, true);
+    assert.equal(out.settingsResult, undefined);
+    assert.equal(existsSync(join(agent, "extensions", "exit.ts")), false);
+    assert.equal(existsSync(join(agent, "extensions", "advisor-adapter")), false);
+    const pkgResult = out.results.find((r) => r.name === "advisor-adapter");
+    assert.equal(pkgResult.status, "would-create");
+    assert.equal(pkgResult.install.status, "would-npm-install");
   });
 });
