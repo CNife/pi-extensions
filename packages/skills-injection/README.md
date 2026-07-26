@@ -30,7 +30,18 @@ pi install npm:@cnife/pi-skills-injection
 
 列表按技能名字母序排列。切换后下一条消息即生效，无需 `/reload`。
 
-每次启动会话时，扩展会通知本会话注入了哪些技能、排除了多少个。
+每次启动会话时，扩展会用英文 notify 列出三类技能（名字字母序 + 数量）：
+
+```text
+Skills injection
+injected (N): ...
+forbidden (M): ...
+non-injectable (K): ...
+```
+
+- `injected`：会注入系统提示词
+- `forbidden`：用户在 `/skills-injection` 里 disabled 的
+- `non-injectable`：`disableModelInvocation`，本身不进系统提示词（TUI 列表不展示）
 
 ## 配置
 
@@ -50,9 +61,9 @@ pi install npm:@cnife/pi-skills-injection
 
 1. **`before_agent_start` 拦截**：读取配置，从 `event.systemPromptOptions.skills` 过滤掉被排除的技能，用 pi 导出的 `formatSkillsForPrompt` 重新渲染 `<available_skills>` 段，正则替换系统提示词中对应的整段。每 turn 读配置文件，所以下一条消息即生效。
 
-2. **`/skills-injection` 命令**：`ctx.ui.custom()` + pi-tui 的 `SettingsList`（对齐官方 `tools.ts` 与 `/settings`），`enableSearch` 做名称模糊筛选。切换即时写配置。
+2. **`/skills-injection` 命令**：`ctx.ui.custom()` + `DynamicBorder`（border 色，对齐 `/settings`）+ `SettingsList`，`enableSearch` 做名称模糊筛选。切换即时写配置。
 
-3. **`session_start` 通知**：用 `pi.getCommands()` 获取已加载技能列表，过滤掉被排除的，`ctx.ui.notify` 通知用户。
+3. **`session_start` 通知**：`ctx.getSystemPromptOptions().skills` 取完整技能列表，按配置分成 injected / forbidden / non-injectable，英文多行 `ctx.ui.notify`。
 
 ### 边界情况
 

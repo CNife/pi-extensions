@@ -72,18 +72,67 @@ export function filterSkillsSection(
 
 // ──── session_start 通知 ───────────────────────────────────────
 
-export interface InjectedSummary {
-  injected: string[];
-  excludedCount: number;
+export interface SkillLike {
+  name: string;
+  disableModelInvocation?: boolean;
 }
 
-/** 从技能名列表和排除集合，计算本会话注入的技能。 */
-export function computeInjected(
-  skillNames: string[],
+export interface SkillsSummary {
+  /** Will be injected into the system prompt */
+  injected: string[];
+  /** User-forbidden from injection */
+  forbidden: string[];
+  /** Never inject (disableModelInvocation) */
+  nonInjectable: string[];
+}
+
+function sortedNames(names: string[]): string[] {
+  return [...names].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * 把技能分成三类：injected / forbidden / non-injectable。
+ * 每类按名字母序。
+ */
+export function summarizeSkills(
+  skills: readonly SkillLike[],
   excluded: ReadonlySet<string>,
-): InjectedSummary {
-  const injected = skillNames.filter((name) => !excluded.has(name));
-  return { injected, excludedCount: skillNames.length - injected.length };
+): SkillsSummary {
+  const injected: string[] = [];
+  const forbidden: string[] = [];
+  const nonInjectable: string[] = [];
+
+  for (const skill of skills) {
+    if (skill.disableModelInvocation) {
+      nonInjectable.push(skill.name);
+      continue;
+    }
+    if (excluded.has(skill.name)) {
+      forbidden.push(skill.name);
+      continue;
+    }
+    injected.push(skill.name);
+  }
+
+  return {
+    injected: sortedNames(injected),
+    forbidden: sortedNames(forbidden),
+    nonInjectable: sortedNames(nonInjectable),
+  };
+}
+
+/** 英文启动说明：三类技能名 + 数量（多行一条 notify）。 */
+export function formatStartupSummary(summary: SkillsSummary): string {
+  const fmt = (label: string, names: string[]) => {
+    const list = names.length > 0 ? names.join(", ") : "—";
+    return `${label} (${names.length}): ${list}`;
+  };
+  return [
+    "Skills injection",
+    fmt("injected", summary.injected),
+    fmt("forbidden", summary.forbidden),
+    fmt("non-injectable", summary.nonInjectable),
+  ].join("\n");
 }
 
 // ──── /skills-injection 命令排序 ────────────────────────────────

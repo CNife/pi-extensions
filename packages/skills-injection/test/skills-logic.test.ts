@@ -4,7 +4,7 @@
  * 测 skills-logic.ts 导出的纯函数：
  *   - parseConfig: 配置 JSON 校验
  *   - filterSkillsSection: system prompt skills 段过滤替换
- *   - computeInjected: session_start 通知的注入计算
+ *   - summarizeSkills / formatStartupSummary: session_start 分类与英文说明
  *   - sortSkillItems: 命令列表排序
  *
  * 用 node:test + tsx --test，仅验证可观察行为。
@@ -17,11 +17,12 @@ import { deepStrictEqual, ok, strictEqual } from "node:assert";
 import { test } from "node:test";
 import type { Skill } from "@earendil-works/pi-coding-agent";
 import {
-  computeInjected,
   DEFAULT_CONFIG,
   filterSkillsSection,
+  formatStartupSummary,
   parseConfig,
   sortSkillItems,
+  summarizeSkills,
 } from "../extensions/skills-logic.ts";
 
 // ============================================================================
@@ -184,35 +185,57 @@ test("filterSkillsSection: disableModelInvocation 的 skill 不进 filtered", ()
 });
 
 // ============================================================================
-// computeInjected
+// summarizeSkills / formatStartupSummary
 // ============================================================================
 
-test("computeInjected: 全部注入", () => {
-  deepStrictEqual(computeInjected(["a", "b"], new Set()), {
+test("summarizeSkills: 三类分类 + 字母序", () => {
+  const skills = [
+    { name: "zeta" },
+    { name: "alpha" },
+    { name: "mid", disableModelInvocation: true },
+    { name: "beta" },
+    { name: "gamma", disableModelInvocation: true },
+  ];
+  deepStrictEqual(summarizeSkills(skills, new Set(["beta", "missing"])), {
+    injected: ["alpha", "zeta"],
+    forbidden: ["beta"],
+    nonInjectable: ["gamma", "mid"],
+  });
+});
+
+test("summarizeSkills: 全部 injected", () => {
+  deepStrictEqual(summarizeSkills([{ name: "b" }, { name: "a" }], new Set()), {
     injected: ["a", "b"],
-    excludedCount: 0,
+    forbidden: [],
+    nonInjectable: [],
   });
 });
 
-test("computeInjected: 部分排除", () => {
-  deepStrictEqual(computeInjected(["a", "b", "c"], new Set(["b"])), {
-    injected: ["a", "c"],
-    excludedCount: 1,
-  });
+test("summarizeSkills: excluded 命中 non-injectable 仍归 non-injectable", () => {
+  deepStrictEqual(
+    summarizeSkills(
+      [{ name: "x", disableModelInvocation: true }],
+      new Set(["x"]),
+    ),
+    { injected: [], forbidden: [], nonInjectable: ["x"] },
+  );
 });
 
-test("computeInjected: 全部排除", () => {
-  deepStrictEqual(computeInjected(["a", "b"], new Set(["a", "b"])), {
-    injected: [],
-    excludedCount: 2,
+test("formatStartupSummary: 多行英文 + 空类破折号", () => {
+  const text = formatStartupSummary({
+    injected: ["a", "b"],
+    forbidden: [],
+    nonInjectable: ["z"],
   });
-});
-
-test("computeInjected: 排除不存在的 name 不影响", () => {
-  deepStrictEqual(computeInjected(["a"], new Set(["x"])), {
-    injected: ["a"],
-    excludedCount: 0,
-  });
+  strictEqual(
+    text,
+    [
+      "Skills injection",
+      "injected (2): a, b",
+      "forbidden (0): —",
+      "non-injectable (1): z",
+    ].join("\n"),
+  );
 });
 
 // ============================================================================

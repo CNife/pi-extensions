@@ -5,9 +5,9 @@
  *
  * - /skills-injection 命令：SettingsList 切换 enabled/disabled，即时持久化
  * - before_agent_start：按配置过滤 skills，重新渲染 <available_skills> 段
- * - session_start：通知用户本会话注入了哪些技能
+ * - session_start：英文通知本会话 injected / forbidden / non-injectable 技能
  *
- * 纯逻辑（parseConfig / filterSkillsSection / computeInjected / sortSkillItems）
+ * 纯逻辑（parseConfig / filterSkillsSection / summarizeSkills / sortSkillItems）
  * 在 ./skills-logic.ts，独立可测。本文件只做编排（event hooks、命令、配置 IO）。
  *
  * 配置：~/.pi/agent/cnife-skills-injection.json，{ "excluded": ["name", ...] }
@@ -17,6 +17,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
+  DynamicBorder,
   type ExtensionAPI,
   formatSkillsForPrompt,
   getAgentDir,
@@ -29,13 +30,14 @@ import {
   Text,
 } from "@earendil-works/pi-tui";
 import {
-  computeInjected,
   DEFAULT_CONFIG,
   filterSkillsSection,
+  formatStartupSummary,
   parseConfig,
   type SkillItem,
   type SkillsInjectionConfig,
   sortSkillItems,
+  summarizeSkills,
 } from "./skills-logic.ts";
 
 // ──── Config IO ─────────────────────────────────────────────────
@@ -78,28 +80,16 @@ function loadConfig(): SkillsInjectionConfig {
 // ──── Entry Point ───────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
-  // 启动时通知本会话注入的技能
+  // 启动时英文通知本会话技能注入分类
   pi.on("session_start", async (_event, ctx) => {
     if (!ctx.hasUI) return;
 
-    const commands = pi.getCommands();
-    const skillNames = commands
-      .filter((c) => c.source === "skill")
-      .map((c) => c.name.replace(/^skill:/, ""));
-
-    if (skillNames.length === 0) return;
+    const skills = ctx.getSystemPromptOptions().skills ?? [];
+    if (skills.length === 0) return;
 
     const config = loadConfig();
-    const { injected, excludedCount } = computeInjected(
-      skillNames,
-      new Set(config.excluded),
-    );
-
-    const title =
-      excludedCount > 0
-        ? `注入 ${injected.length} 个技能（已排除 ${excludedCount} 个）`
-        : `注入 ${injected.length} 个技能`;
-    ctx.ui.notify(`${title}：${injected.join(", ")}`, "info");
+    const summary = summarizeSkills(skills, new Set(config.excluded));
+    ctx.ui.notify(formatStartupSummary(summary), "info");
   });
 
   // 拦截 system prompt，过滤被排除的技能
@@ -121,10 +111,13 @@ export default function (pi: ExtensionAPI) {
 
   // /skills-injection 命令：SettingsList 多开关（对齐 /tools、/settings）
   pi.registerCommand("skills-injection", {
-    description: "配置哪些技能注入到系统提示词",
+    description: "Configure which skills inject into the system prompt",
     handler: async (_args, ctx) => {
       if (ctx.mode !== "tui") {
-        ctx.ui.notify("skills-injection 需要交互式终端", "warning");
+        ctx.ui.notify(
+          "skills-injection requires an interactive TUI",
+          "warning",
+        );
         return;
       }
 
@@ -136,7 +129,7 @@ export default function (pi: ExtensionAPI) {
         .map((s) => ({ name: s.name }));
 
       if (items.length === 0) {
-        ctx.ui.notify("当前没有可注入的技能", "info");
+        ctx.ui.notify("No injectable skills available", "info");
         return;
       }
 
@@ -152,11 +145,12 @@ export default function (pi: ExtensionAPI) {
         }));
 
         const container = new Container();
+        // 上下分割线对齐官方 /settings（DynamicBorder + border 色）
         container.addChild(
-          new Text(theme.fg("accent", theme.bold("Skills Injection")), 0, 0),
+          new DynamicBorder((s: string) => theme.fg("border", s)),
         );
         container.addChild(
-          new Text(theme.fg("dim", "enabled = 注入 · disabled = 不注入"), 0, 0),
+          new Text(theme.fg("accent", theme.bold("Skills Injection")), 1, 0),
         );
 
         const settingsList = new SettingsList(
@@ -178,6 +172,9 @@ export default function (pi: ExtensionAPI) {
         );
 
         container.addChild(settingsList);
+        container.addChild(
+          new DynamicBorder((s: string) => theme.fg("border", s)),
+        );
 
         return {
           render(width: number) {
