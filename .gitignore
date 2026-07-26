@@ -5,3 +5,4 @@ personal/**/node_modules/
 __pycache__/
 *.pyc
 .pi-subagents/
+.agents/skills/*
