@@ -14,25 +14,34 @@ node scripts/sync-personal.mjs --dry-run
 node scripts/sync-personal.mjs
 ```
 
-脚本按**条目**处理，绝不把全局扩展目录整根指到 `personal/`：
+脚本按**条目**软链到 `~/.pi/agent/extensions/`，绝不整树替换：
 
 | 条目类型 | 判定 | 动作 |
 | --- | --- | --- |
-| 文件型 | 顶层 `*.ts` | 软链到 `~/.pi/agent/extensions/<name>.ts` |
-| 包型 | 子目录且含 `package.json` | 在目录内 `npm install`，并把**绝对路径**写入 `settings.json` 的 `packages` |
+| 文件型 | 顶层 `*.ts` | 软链文件 |
+| 包型 | 子目录且含 `package.json` | 目录内 `npm install`，再软链**整个目录** |
 | 其他 | `README.md`、无清单目录等 | 跳过 |
 
-包型**禁止**再软链同一条目，防止双加载。
+pi 会自动发现 `extensions/` 下的包目录（并跳过其 `node_modules`），**不必**把 personal 条目写进 `settings.json` 的 `packages`。
+
+包型仍要在目录内装依赖：pi 对本地路径不会跑 `npm install`，由本脚本负责（`--omit=dev --omit=peer`）。
 
 ### 幂等与冲突
 
-- 重复运行安全：已指向正确源的软链不动；settings 去重。
+- 重复运行安全：已指向正确源的软链不动。
 - 目标已存在且**不是**软链 → **失败并提示**，避免覆盖 herdr 等 local-only 文件。
-- 包型若发现同名 standalone 扩展文件（如旧的 `extensions/advisor-adapter.ts`）→ 失败，需先备份/删除。
 
-### 重要修正
+### 与 settings 的边界
 
-当前 pi 对本地路径的 `pi install` **只校验路径存在，不跑 `npm install`**。包型依赖安装由本脚本负责（`--omit=dev --omit=peer`）。
+本脚本**不修改** `settings.json`。若仍安装着会被 personal 取代的 npm 包，请自行卸掉以免双加载，例如：
+
+```bash
+# 退役 miscs / 原版顾问后（若还在 packages 列表里）
+pi remove npm:@cnife/pi-miscs
+pi remove npm:@juicesharp/rpiv-advisor
+```
+
+原版顾问只应作为顾问小包的 `node_modules` 依赖存在，不要再当独立扩展安装。
 
 ## 当前内容
 
@@ -53,16 +62,16 @@ node scripts/sync-personal.mjs
 
 ## 顾问小包
 
-- settings 中**不要**再挂 `npm:@juicesharp/rpiv-advisor` 作为独立扩展；依赖只存在于本包 `node_modules`，原 factory 当库调用。
-- 同步脚本会从 settings 移除 `npm:@juicesharp/rpiv-advisor` 与 `npm:@cnife/pi-miscs`。
+- 不要在 settings 里挂 `npm:@juicesharp/rpiv-advisor`；依赖只在本包 `node_modules`，原 factory 当库调用。
 - **脆点**：适配器 deep-import 上游内部模块（`@juicesharp/rpiv-advisor/advisor/*`）。上游对这些路径**无兼容承诺**；上游大改时需跟进本包。
 
 ### 迁移旧 standalone 适配器
 
-若本机仍有 `~/.pi/agent/extensions/advisor-adapter.ts`：
+若本机仍有 `~/.pi/agent/extensions/advisor-adapter.ts`（文件）：
 
 ```bash
-mv ~/.pi/agent/extensions/advisor-adapter.ts \
-   ~/.pi/agent/extensions/advisor-adapter.ts.pre-personal.bak
+rm ~/.pi/agent/extensions/advisor-adapter.ts   # 或 mv 成 .bak
 node scripts/sync-personal.mjs
 ```
+
+同步后应出现目录软链：`extensions/advisor-adapter` → `personal/advisor-adapter`。

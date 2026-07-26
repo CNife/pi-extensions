@@ -40,7 +40,7 @@ pi install npm:@cnife/pi-nmem
 
 ## personal
 
-个人扩展（文件型软链 / 包型本地路径）用同步脚本挂到本机：
+个人扩展用同步脚本按条目软链到本机 `extensions/`（包型会先装依赖）：
 
 ```bash
 node scripts/sync-personal.mjs --dry-run

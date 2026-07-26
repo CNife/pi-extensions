@@ -1,24 +1,23 @@
 #!/usr/bin/env node
-// Sync personal/ entries into the local pi agent directory.
+// Sync personal/ entries into ~/.pi/agent/extensions/ by per-entry symlink.
 //
-// File-type (.ts): symlink into ~/.pi/agent/extensions/
-// Package-type (dir with package.json): npm install deps + register absolute
-// path in settings packages. Never symlink package dirs (prevents dual-load).
+// File-type (top-level *.ts): symlink the file.
+// Package-type (subdir with package.json): npm install deps in-place, then
+// symlink the directory. Pi auto-discovers package dirs under extensions/
+// (skips node_modules), so settings.json does not need to list them.
 //
-// Note: pi's local-path install only checks path existence and does NOT run
-// npm install. This script owns dependency installation for package entries.
+// Never whole-tree replace the extensions dir — local-only files stay put.
+// Existing non-symlink targets fail closed (protect herdr etc.).
 
 import {
   existsSync,
   lstatSync,
   mkdirSync,
   readdirSync,
-  readFileSync,
   readlinkSync,
   renameSync,
   statSync,
   symlinkSync,
-  writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -31,19 +30,13 @@ const DEFAULT_AGENT_DIR = join(homedir(), ".pi", "agent");
 
 const SKIP_NAMES = new Set(["readme.md", "agents.md"]);
 
-/** Sources removed from settings when syncing package entries. */
-export const DEFAULT_REMOVE_SOURCES = [
-  "npm:@juicesharp/rpiv-advisor",
-  "npm:@cnife/pi-miscs",
-];
-
 /**
  * Plan sync actions from a personal directory listing.
- * Pure: no filesystem side effects beyond reading the personal tree.
+ * Pure aside from reading the personal tree.
  *
  * @param {string} personalDir
  * @param {string} agentDir
- * @returns {Array<{name: string, type: string, action: string, source?: string, target?: string, settingsSource?: string, reason?: string}>}
+ * @returns {Array<{name: string, type: string, action: string, source?: string, target?: string, reason?: string}>}
  */
 export function planSync(personalDir, agentDir) {
   const personalAbs = resolve(personalDir);
@@ -85,15 +78,20 @@ export function planSync(personalDir, agentDir) {
       continue;
     }
 
-    if (entry.isDirectory() || (entry.isSymbolicLink() && statSync(source).isDirectory())) {
+    if (
+      entry.isDirectory() ||
+      (entry.isSymbolicLink() && statSync(source).isDirectory())
+    ) {
       const pkgJson = join(source, "package.json");
       if (existsSync(pkgJson)) {
+        // link the dir; executor runs npm install first
         plan.push({
           name,
           type: "package",
-          action: "install-local",
+          action: "link",
           source,
-          settingsSource: source,
+          target: join(extensionsDir, name),
+          installDeps: true,
         });
       } else {
         plan.push({
@@ -119,60 +117,23 @@ export function planSync(personalDir, agentDir) {
   return plan.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/**
- * Update a settings object packages array.
- * Pure: returns a new settings object.
- *
- * @param {object} settings
- * @param {{ add?: string[], remove?: string[] }} opts
- * @returns {object}
- */
-export function updateSettingsPackages(settings, { add = [], remove = [] } = {}) {
-  const current = Array.isArray(settings.packages) ? [...settings.packages] : [];
-  const removeSet = new Set(remove.map(normalizeSource));
-
-  const kept = current.filter((entry) => {
-    const source = packageSource(entry);
-    return !removeSet.has(normalizeSource(source));
-  });
-
-  const existing = new Set(kept.map((entry) => normalizeSource(packageSource(entry))));
-  for (const source of add) {
-    const norm = normalizeSource(source);
-    if (!existing.has(norm)) {
-      kept.push(source);
-      existing.add(norm);
-    }
-  }
-
-  return { ...settings, packages: kept };
-}
-
-function packageSource(entry) {
-  return typeof entry === "string" ? entry : entry?.source;
-}
-
-function normalizeSource(source) {
-  if (typeof source !== "string") return String(source);
-  // Absolute local paths: resolve for stable comparison
-  if (source.startsWith("/") || source.startsWith("./") || source.startsWith("../")) {
-    try {
-      return resolve(source);
-    } catch {
-      return source;
-    }
-  }
-  return source;
-}
-
 function ensureDir(dir) {
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
   }
 }
 
+function isBrokenSymlink(path) {
+  try {
+    lstatSync(path);
+    return !existsSync(path);
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Link a file entry. Fails on non-symlink conflicts to protect local-only files.
+ * Create or refresh a symlink. Fails on non-symlink conflicts.
  * @param {{source: string, target: string, name: string}} item
  * @param {{dryRun?: boolean}} opts
  */
@@ -185,12 +146,17 @@ export function applyLink(item, { dryRun = false } = {}) {
     if (st.isSymbolicLink()) {
       const current = resolve(dirname(target), readlinkSync(target));
       if (current === resolve(source)) {
-        return { name, action: "link", status: "unchanged" };
+        return { name, action: "link", status: "unchanged", target };
       }
       if (dryRun) {
-        return { name, action: "link", status: "would-replace-symlink", from: current };
+        return {
+          name,
+          action: "link",
+          status: "would-replace-symlink",
+          from: current,
+          target,
+        };
       }
-      // replace wrong symlink
       renameSync(target, `${target}.pre-personal.bak`);
     } else {
       throw new Error(
@@ -208,38 +174,15 @@ export function applyLink(item, { dryRun = false } = {}) {
   return { name, action: "link", status: "created", target };
 }
 
-function isBrokenSymlink(path) {
-  try {
-    lstatSync(path);
-    return !existsSync(path);
-  } catch {
-    return false;
-  }
-}
-
 /**
- * Install package deps and return settings mutation intent.
- * @param {{source: string, settingsSource: string, name: string}} item
+ * Install production deps for a package-type personal entry.
+ * @param {string} source package directory
  * @param {{dryRun?: boolean}} opts
  */
-export function applyInstallLocal(item, { dryRun = false } = {}) {
-  const { source, settingsSource, name } = item;
-  const oldStandalone = join(
-    dirname(dirname(settingsSource)), // not reliable; check via agent extensions later
-    "extensions",
-    `${name}.ts`,
-  );
-  void oldStandalone;
-
+export function installPackageDeps(source, { dryRun = false } = {}) {
   if (dryRun) {
-    return {
-      name,
-      action: "install-local",
-      status: "would-npm-install-and-register",
-      settingsSource,
-    };
+    return { status: "would-npm-install", cwd: source };
   }
-
   const result = spawnSync(
     "npm",
     ["install", "--omit=dev", "--omit=peer", "--no-audit", "--no-fund"],
@@ -254,76 +197,7 @@ export function applyInstallLocal(item, { dryRun = false } = {}) {
       `npm install failed in ${source}:\n${result.stderr || result.stdout || ""}`,
     );
   }
-
-  return {
-    name,
-    action: "install-local",
-    status: "installed",
-    settingsSource,
-  };
-}
-
-/**
- * Guard against leftover standalone extension file for a package name.
- * @param {string} agentDir
- * @param {string} packageName
- */
-export function assertNoStandalonePackageExtension(agentDir, packageName) {
-  const path = join(agentDir, "extensions", `${packageName}.ts`);
-  if (!existsSync(path) && !isBrokenSymlink(path)) return;
-  try {
-    const st = lstatSync(path);
-    if (st.isSymbolicLink()) {
-      // A leftover symlink to an old location still dual-loads; refuse.
-      throw new Error(
-        `Found old standalone extension ${path} (symlink). ` +
-          `Remove or back it up before syncing the ${packageName} package.`,
-      );
-    }
-    throw new Error(
-      `Found old standalone extension ${path}. ` +
-        `Remove or back it up before syncing the ${packageName} package.`,
-    );
-  } catch (err) {
-    if (err && err.code === "ENOENT") return;
-    throw err;
-  }
-}
-
-/**
- * Persist settings packages changes with a one-time backup.
- * @param {string} settingsPath
- * @param {{add: string[], remove: string[]}} mutation
- * @param {{dryRun?: boolean}} opts
- */
-export function applySettingsMutation(settingsPath, mutation, { dryRun = false } = {}) {
-  if (!existsSync(settingsPath)) {
-    throw new Error(`settings file not found: ${settingsPath}`);
-  }
-  const raw = readFileSync(settingsPath, "utf-8");
-  const settings = JSON.parse(raw);
-  const next = updateSettingsPackages(settings, mutation);
-  const nextRaw = `${JSON.stringify(next, null, 2)}\n`;
-
-  if (raw === nextRaw || JSON.stringify(settings.packages) === JSON.stringify(next.packages)) {
-    // Still rewrite if key order differs? Prefer content-equality on packages.
-    const same =
-      JSON.stringify(settings.packages ?? []) === JSON.stringify(next.packages ?? []);
-    if (same) {
-      return { status: "unchanged", packages: next.packages };
-    }
-  }
-
-  if (dryRun) {
-    return { status: "would-update", packages: next.packages };
-  }
-
-  const bak = `${settingsPath}.bak-sync`;
-  if (!existsSync(bak)) {
-    writeFileSync(bak, raw, "utf-8");
-  }
-  writeFileSync(settingsPath, nextRaw, "utf-8");
-  return { status: "updated", packages: next.packages };
+  return { status: "installed", cwd: source };
 }
 
 function parseArgs(argv) {
@@ -346,79 +220,30 @@ function parseArgs(argv) {
 function printHelp() {
   console.log(`Usage: node scripts/sync-personal.mjs [options]
 
-Sync personal/ entries into the local pi agent directory.
+Sync personal/ entries into ~/.pi/agent/extensions/ (per-entry symlink).
 
 Options:
-  --dry-run              Plan only; do not mutate filesystem or settings
+  --dry-run              Plan only; do not mutate filesystem
   --personal-dir <path>  Override personal directory (default: <repo>/personal)
   --agent-dir <path>     Override pi agent dir (default: ~/.pi/agent)
   -h, --help             Show help
 `);
 }
 
+/**
+ * @param {{personalDir?: string, agentDir?: string, dryRun?: boolean}} opts
+ */
 export function runSync({
   personalDir = DEFAULT_PERSONAL_DIR,
   agentDir = DEFAULT_AGENT_DIR,
   dryRun = false,
-  removeSources = DEFAULT_REMOVE_SOURCES,
 } = {}) {
   const plan = planSync(personalDir, agentDir);
   const results = [];
-  const addSources = [];
-  const blockers = [];
 
-  // Phase 1: validate package entries (fail closed before mutating)
-  for (const item of plan) {
-    if (item.action !== "install-local") continue;
-    try {
-      assertNoStandalonePackageExtension(agentDir, item.name);
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-      blockers.push({ name: item.name, reason });
-    }
+  if (!dryRun) {
+    ensureDir(join(agentDir, "extensions"));
   }
-
-  if (blockers.length > 0) {
-    if (dryRun) {
-      for (const b of blockers) {
-        results.push({
-          name: b.name,
-          action: "install-local",
-          status: "blocked",
-          reason: b.reason,
-        });
-      }
-      for (const item of plan) {
-        if (item.action === "skip") {
-          results.push({ name: item.name, action: "skip", reason: item.reason });
-        } else if (item.action === "link") {
-          results.push(applyLink(item, { dryRun: true }));
-        } else if (
-          item.action === "install-local" &&
-          !blockers.some((b) => b.name === item.name)
-        ) {
-          results.push(applyInstallLocal(item, { dryRun: true }));
-          addSources.push(item.settingsSource);
-        }
-      }
-      return {
-        plan,
-        results,
-        settingsResult: {
-          status: "blocked",
-          reason: "package entry blocked; settings not changed",
-          blockers,
-          wouldAdd: addSources,
-          wouldRemove: removeSources,
-        },
-        dryRun,
-      };
-    }
-    throw new Error(blockers.map((b) => b.reason).join("\n"));
-  }
-
-  // Phase 2: apply
-  ensureDir(join(agentDir, "extensions"));
 
   for (const item of plan) {
     if (item.action === "skip") {
@@ -426,38 +251,16 @@ export function runSync({
       continue;
     }
     if (item.action === "link") {
-      results.push(applyLink(item, { dryRun }));
-      continue;
-    }
-    if (item.action === "install-local") {
-      results.push(applyInstallLocal(item, { dryRun }));
-      addSources.push(item.settingsSource);
-    }
-  }
-
-  let settingsResult = null;
-  // Always reconcile settings when we have package installs or known replacements.
-  // File-only sync still drops miscs/original-advisor so personal becomes source of truth.
-  if (addSources.length > 0 || removeSources.length > 0) {
-    const settingsPath = join(agentDir, "settings.json");
-    if (existsSync(settingsPath)) {
-      settingsResult = applySettingsMutation(
-        settingsPath,
-        { add: addSources, remove: removeSources },
-        { dryRun },
-      );
-    } else if (dryRun) {
-      settingsResult = {
-        status: "would-update-if-settings-exist",
-        add: addSources,
-        remove: removeSources,
-      };
-    } else {
-      throw new Error(`settings file not found: ${settingsPath}`);
+      let install = null;
+      if (item.installDeps) {
+        install = installPackageDeps(item.source, { dryRun });
+      }
+      const link = applyLink(item, { dryRun });
+      results.push(install ? { ...link, install } : link);
     }
   }
 
-  return { plan, results, settingsResult, dryRun };
+  return { plan, results, dryRun };
 }
 
 function main() {
