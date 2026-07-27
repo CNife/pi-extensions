@@ -17,9 +17,42 @@ interface GitState {
   dirty: number;
 }
 
+/** 单轮对话的计时状态，移植自 pi-tps（裁剪掉 footer 不用的 cost/energy 字段）。 */
+interface TurnTiming {
+  lastUpdateMs: number;
+  firstTokenMs: number | null;
+  currentMessageStartMs: number | null;
+  totalGenerationMs: number;
+  updateCount: number;
+  firstStreamUpdateMs: number | null;
+  lastStreamUpdateMs: number;
+  stallMs: number;
+  stallCount: number;
+  inStall: boolean;
+  totalOutput: number;
+}
+
 const SEP = " · ";
 const GIT_INTERVAL_MS = 10_000;
 const BASH_REFRESH_DELAY_MS = 1500;
+
+// ── TPS 算法常量（移植自 pi-tps buildTelemetry） ──────────────────────────
+/** message_update 间隔超过此值视为推理停顿（ms） */
+const STALL_THRESHOLD_MS = 500;
+/** 流式窗口最短时长，低于则不作为 primary 测量（ms） */
+const MIN_STREAM_MS = 1;
+/** primary 分支要求的最少流式 update 数（不含 TTFT 那次） */
+const MIN_STREAM_UPDATES = 5;
+/** 流式 chunk 间平均间隔阈值，低于则判为缓冲刷盘而非真实生成（ms） */
+const MIN_INTER_CHUNK_MS = 1;
+/** 有效生成窗口最短时长（ms） */
+const MIN_GENERATION_MS = 200;
+/** fallback 分支判定停顿主导的活跃时长阈值（ms） */
+const ACTIVE_TIME_THRESHOLD_MS = 200;
+const STALL_REDUCTION_DENOM = 2;
+const STALL_DOMINANCE_RATIO = 0.85;
+/** 单轮速率上限，超过则判为测量伪影，返回 null */
+const MAX_PLAUSIBLE_TPS = 10_000;
 
 function fmt(n: number): string {
   if (n < 1000) return String(n);
@@ -31,10 +64,77 @@ function fmtCost(c: number): string {
   return c < 0.01 ? `$${c.toFixed(3)}` : `$${c.toFixed(2)}`;
 }
 
-/** Type guard: assistant message 才有 usage/stopReason，用于 message_end。 */
+/** Type guard：assistant message 且 usage 字段就绪，用于流式与结束事件。 */
 function isAssistantMessage(message: unknown): message is AssistantMessage {
   if (!message || typeof message !== "object") return false;
-  return (message as { role?: unknown }).role === "assistant";
+  const msg = message as { role?: unknown; usage?: unknown };
+  if (msg.role !== "assistant") return false;
+  if (typeof msg.usage !== "object" || msg.usage === null) return false;
+  const usage = msg.usage as { input?: unknown; output?: unknown };
+  return typeof usage.input === "number" && typeof usage.output === "number";
+}
+
+/** 保留一位小数四舍五入。 */
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
+/**
+ * 由单轮计时状态算出生成速率（token/s）。
+ * 三段门控：primary（纯流式窗口减停顿）/ fallback（含 TTFT 的保守估计）/ null（无法判定）。
+ * 再经体积门：超过 MAX_PLAUSIBLE_TPS 判为伪影，返回 null。
+ * 移植自 pi-tps 的 buildTelemetry，裁剪掉 footer 不需要的 cost/tokens/model 详情。
+ */
+function computeTps(timing: TurnTiming): number | null {
+  if (timing.totalOutput <= 0) return null;
+  if (timing.firstTokenMs === null) return null;
+
+  const streamMs =
+    timing.updateCount > 0 && timing.firstStreamUpdateMs !== null
+      ? timing.lastStreamUpdateMs - timing.firstStreamUpdateMs
+      : null;
+  const avgInterChunkGap =
+    streamMs !== null && timing.updateCount > 1
+      ? streamMs / (timing.updateCount - 1)
+      : 0;
+
+  let tps: number | null = null;
+  if (
+    streamMs !== null &&
+    streamMs >= MIN_STREAM_MS &&
+    timing.updateCount >= MIN_STREAM_UPDATES &&
+    avgInterChunkGap >= MIN_INTER_CHUNK_MS &&
+    timing.stallMs < streamMs &&
+    streamMs - timing.stallMs >= MIN_GENERATION_MS &&
+    timing.stallMs < streamMs - timing.stallMs
+  ) {
+    // primary：流式窗口减去停顿，纯生成时间
+    const effectiveStreamMs = streamMs - timing.stallMs;
+    tps = round1(timing.totalOutput / (effectiveStreamMs / 1000));
+  } else if (
+    timing.updateCount >= 2 &&
+    timing.totalGenerationMs >= MIN_GENERATION_MS
+  ) {
+    // fallback：含 TTFT 的完整生成窗口，保守低估
+    let effectiveGenMs = timing.totalGenerationMs - timing.stallMs;
+    const stallsDominate =
+      effectiveGenMs < ACTIVE_TIME_THRESHOLD_MS ||
+      timing.stallMs > timing.totalGenerationMs * STALL_DOMINANCE_RATIO;
+    effectiveGenMs = stallsDominate
+      ? Math.max(
+          timing.totalGenerationMs - timing.stallMs / STALL_REDUCTION_DENOM,
+          MIN_GENERATION_MS,
+        )
+      : Math.max(effectiveGenMs, MIN_GENERATION_MS);
+    tps = round1(timing.totalOutput / (effectiveGenMs / 1000));
+  } else {
+    tps = null;
+  }
+
+  if (tps !== null && tps > MAX_PLAUSIBLE_TPS) {
+    tps = null;
+  }
+  return tps;
 }
 
 /** Parse `git status -b --porcelain` output into branch/ahead/behind/dirty. */
@@ -84,9 +184,9 @@ export default function (pi: ExtensionAPI) {
   let refreshing = false;
   let cwd = "";
 
-  // TPS（输出速率）：requestAt 配对 before_provider_request/message_end，
-  // lastTps 保存最近一次有效速率，render 时拼到第 2 行末尾。
-  let requestAt: number | null = null;
+  // TPS（生成速率）：turn 维度计时，lastTps 保留上一轮有效速率供 footer 渲染。
+  // turn 进行中沿用上一轮值，与原「保持到下一条」体验一致。
+  let currentTiming: TurnTiming | null = null;
   let lastTps: number | null = null;
 
   const refreshGit = async () => {
@@ -107,9 +207,9 @@ export default function (pi: ExtensionAPI) {
     }
   };
 
-  /** 清空 TPS 锚点与最近速率并重渲染（切模型/compact/树导航/无效结束时调用）。 */
+  /** 清空当前轮计时与最近速率并重渲染（切模型/compact/树导航/新会话时调用）。 */
   const resetTps = () => {
-    requestAt = null;
+    currentTiming = null;
     lastTps = null;
     activeTui?.requestRender();
   };
@@ -117,7 +217,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     cwd = ctx.cwd;
     gitState = { branch: null, ahead: 0, behind: 0, dirty: 0 };
-    requestAt = null;
+    currentTiming = null;
     lastTps = null;
 
     ctx.ui.setFooter((tui, theme, footerData) => {
@@ -202,37 +302,89 @@ export default function (pi: ExtensionAPI) {
     }, GIT_INTERVAL_MS);
   });
 
-  // TPS（输出速率）：before_provider_request 记请求时刻，message_end 算 output/elapsed。
-  // 口径对齐 pi 官方 tps.ts：elapsed 含网络 + 排队 + 生成，不用 message.timestamp。
-  pi.on("before_provider_request", () => {
-    requestAt = Date.now();
+  // ── TPS：turn 维度计时（口径移植自 pi-tps） ──────────────────────────
+  // turn_start 起计，message_update 累积流式窗口与停顿，turn_end 用三段门控
+  // 算出生成速率。performance.now() 单调亚毫秒计时。
+  pi.on("turn_start", () => {
+    const now = performance.now();
+    currentTiming = {
+      lastUpdateMs: now,
+      firstTokenMs: null,
+      currentMessageStartMs: null,
+      totalGenerationMs: 0,
+      updateCount: 0,
+      firstStreamUpdateMs: null,
+      lastStreamUpdateMs: 0,
+      stallMs: 0,
+      stallCount: 0,
+      inStall: false,
+      totalOutput: 0,
+    };
+  });
+
+  pi.on("message_start", (event) => {
+    if (!currentTiming) return;
+    if (!isAssistantMessage(event.message)) return;
+    const now = performance.now();
+    currentTiming.currentMessageStartMs = now;
+    // 重置停顿时钟，工具间隙不计入推理停顿
+    currentTiming.lastUpdateMs = now;
+    currentTiming.inStall = false;
+  });
+
+  pi.on("message_update", (event) => {
+    if (!currentTiming) return;
+    if (!isAssistantMessage(event.message)) return;
+    const now = performance.now();
+    // 第一个 update 即 TTFT，不计入流式窗口
+    if (currentTiming.firstTokenMs === null) {
+      currentTiming.firstTokenMs = now;
+      currentTiming.lastUpdateMs = now;
+      return;
+    }
+    currentTiming.updateCount++;
+    if (currentTiming.firstStreamUpdateMs === null) {
+      currentTiming.firstStreamUpdateMs = now;
+    }
+    currentTiming.lastStreamUpdateMs = now;
+    const gap = now - currentTiming.lastUpdateMs;
+    if (gap >= STALL_THRESHOLD_MS) {
+      if (!currentTiming.inStall) currentTiming.stallCount++;
+      currentTiming.inStall = true;
+      currentTiming.stallMs += gap;
+    } else {
+      currentTiming.inStall = false;
+    }
+    currentTiming.lastUpdateMs = now;
   });
 
   pi.on("message_end", (event) => {
+    if (!currentTiming) return;
     if (!isAssistantMessage(event.message)) return;
     const message = event.message as AssistantMessage;
-    // aborted/error 或无效数据时丢弃，不留旧值
-    if (message.stopReason === "aborted" || message.stopReason === "error") {
-      resetTps();
-      return;
+    const now = performance.now();
+    if (currentTiming.currentMessageStartMs !== null) {
+      currentTiming.totalGenerationMs +=
+        now - currentTiming.currentMessageStartMs;
+      currentTiming.currentMessageStartMs = null;
     }
-    const output = message.usage.output;
-    if (requestAt === null || output <= 0) {
-      resetTps();
-      return;
-    }
-    const elapsedSeconds = (Date.now() - requestAt) / 1000;
-    if (elapsedSeconds <= 0) {
-      resetTps();
-      return;
-    }
-    lastTps = output / elapsedSeconds;
-    activeTui?.requestRender();
-    // 消费完毕，等下一条 message 的 before_provider_request
-    requestAt = null;
+    currentTiming.totalOutput += message.usage.output || 0;
+    currentTiming.lastUpdateMs = now;
   });
 
-  // 切模型 / compact / 树导航后重置 TPS
+  pi.on("turn_end", () => {
+    if (!currentTiming) return;
+    const timing = currentTiming;
+    currentTiming = null;
+    const tps = computeTps(timing);
+    // 算不出（中断/报错/突发刷盘/窗口太短）时保留上一轮值，不渲染
+    if (tps !== null) {
+      lastTps = tps;
+      activeTui?.requestRender();
+    }
+  });
+
+  // 切模型 / compact / 树导航后重置 TPS（含当前轮计时状态）
   pi.on("session_tree", () => resetTps());
   pi.on("session_compact", () => resetTps());
   pi.on("model_select", () => resetTps());
