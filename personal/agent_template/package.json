@@ -1,0 +1,23 @@
+{
+  "name": "personal-agent-template",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Personal fabric provider: discover and read ~/.pi/agent/agents/*.md subagent profiles for task-routed agents.run",
+  "keywords": [
+    "pi-package"
+  ],
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "pi-fabric": "^0.28.2",
+    "typescript": "^5.6.0"
+  }
+}

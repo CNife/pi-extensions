@@ -93,6 +93,28 @@ export function planSync(personalDir, agentDir) {
           target: join(extensionsDir, name),
           installDeps: true,
         });
+        // Bundle skills: symlink each skills/<sub>/SKILL.md into
+        // ~/.pi/agent/skills/ so pi's packageManager auto-discovers them
+        // (it scans ~/.pi/agent/skills/ and ~/.agents/skills/, not skills/
+        // nested under extensions/ packages).
+        const skillsDir = join(source, "skills");
+        if (existsSync(skillsDir)) {
+          for (const sub of readdirSync(skillsDir, { withFileTypes: true })) {
+            const subPath = join(skillsDir, sub.name);
+            const isDir =
+              sub.isDirectory() ||
+              (sub.isSymbolicLink() && statSync(subPath).isDirectory());
+            if (isDir && existsSync(join(subPath, "SKILL.md"))) {
+              plan.push({
+                name: `${name}/skills/${sub.name}`,
+                type: "skill",
+                action: "link",
+                source: subPath,
+                target: join(agentAbs, "skills", sub.name),
+              });
+            }
+          }
+        }
       } else {
         plan.push({
           name,
@@ -243,6 +265,7 @@ export function runSync({
 
   if (!dryRun) {
     ensureDir(join(agentDir, "extensions"));
+    ensureDir(join(agentDir, "skills"));
   }
 
   for (const item of plan) {
