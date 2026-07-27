@@ -19,7 +19,8 @@ node scripts/sync-personal.mjs
 | 条目类型 | 判定 | 动作 |
 | --- | --- | --- |
 | 文件型 | 顶层 `*.ts` | 软链文件 |
-| 包型 | 子目录且含 `package.json` | 目录内 `npm install`，再软链**整个目录** |
+| 包型 | 子目录含 `package.json` | 目录内 `npm install`，再软链**整个目录** |
+| 包内技能 | 包型条目下 `skills/<sub>/SKILL.md` | 额外软链 `skills/<sub>` 到 `~/.pi/agent/skills/<sub>` |
 | 其他 | `README.md`、无清单目录等 | 跳过 |
 
 pi 会自动发现 `extensions/` 下的包目录（并跳过其 `node_modules`），**不必**把 personal 条目写进 `settings.json` 的 `packages`。
@@ -50,6 +51,7 @@ pi remove npm:@juicesharp/rpiv-advisor
 | `exit.ts` | 文件 | 输入 `exit` 退出会话（自 miscs） |
 | `debug-request-body.ts` | 文件 | `PI_DEBUG_REQUEST_BODY` 门闩下写请求体（自 miscs） |
 | `advisor-adapter/` | 包 | 代理 `@juicesharp/rpiv-advisor`：流式 thinking/正文 + 自定义 header/footer 渲染 |
+| `agent_template/` | 包 | fabric FabricProvider：目录化 `~/.pi/agent/agents/*.md` agent 配置，供 fabric_exec 沙箱内 `profile` + `agents.run` 路由执行；捆绑 `agent-template` 技能 |
 
 ## 不进仓（local-only 边界）
 
