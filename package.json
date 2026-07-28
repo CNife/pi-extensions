@@ -2,12 +2,16 @@
   "name": "cnife-pi-extensions",
   "version": "1.0.0",
   "private": true,
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "check": "npx biome check ./packages",
-    "check:fix": "npx biome check --write ./packages",
-    "format": "npx biome format --write ./packages",
-    "check:unsafe": "npx biome check --write --unsafe ./packages",
+    "check": "biome check . && tsc --noEmit && vitest run",
+    "check:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "check:unsafe": "biome check --write --unsafe .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "proto:timing": "npx tsx packages/auto-naming-session/prototype/first-title-timing/index.ts",
     "prepare": "husky || true"
   },
@@ -30,6 +34,12 @@
     "@earendil-works/pi-tui": "^0.75.5",
     "@types/node": "^25.9.1",
     "husky": "^9.1.7",
-    "lint-staged": "^17.0.5"
+    "lint-staged": "^17.0.5",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.10"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22"
   }
 }

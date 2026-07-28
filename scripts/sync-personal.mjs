@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 // Sync personal/ entries into ~/.pi/agent/extensions/ by per-entry symlink.
 //
 // File-type (top-level *.ts): symlink the file.
@@ -9,6 +10,7 @@
 // Never whole-tree replace the extensions dir — local-only files stay put.
 // Existing non-symlink targets fail closed (protect herdr etc.).
 
+import { spawnSync } from "node:child_process";
 import {
   existsSync,
   lstatSync,
@@ -22,7 +24,6 @@ import {
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { spawnSync } from "node:child_process";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_PERSONAL_DIR = join(REPO_ROOT, "personal");
@@ -57,7 +58,10 @@ export function planSync(personalDir, agentDir) {
 
     const source = join(personalAbs, name);
 
-    if (entry.isFile() || (entry.isSymbolicLink() && statSync(source).isFile())) {
+    if (
+      entry.isFile() ||
+      (entry.isSymbolicLink() && statSync(source).isFile())
+    ) {
       if (!name.endsWith(".ts")) {
         plan.push({
           name,

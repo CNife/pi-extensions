@@ -13,7 +13,10 @@
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 
 /** Message type carried by `message` entries (derives AgentMessage from SessionEntry). */
-type AgentMessage = Extract<SessionEntry, { type: "message" }>["message"];
+export type AgentMessage = Extract<
+  SessionEntry,
+  { type: "message" }
+>["message"];
 
 /** Loose content shape sufficient for text extraction (covers user & assistant content). */
 type TextualContent = string | Array<{ type: string; text?: string }>;

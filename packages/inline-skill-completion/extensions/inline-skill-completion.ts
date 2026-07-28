@@ -209,8 +209,6 @@ export default function (pi: ExtensionAPI) {
     // 叠加在原生补全之上：非 / 场景全部委托 current
     ctx.ui.addAutocompleteProvider(
       (current: AutocompleteProvider): AutocompleteProvider => ({
-        triggerCharacters: ["/"],
-
         async getSuggestions(
           lines: string[],
           cursorLine: number,
@@ -343,27 +341,15 @@ export default function (pi: ExtensionAPI) {
       // 必须 await：handled 返回前确保消息已入队/turn 已触发；
       // 失败则降级为 continue（让 pi 把原文当普通 user 消息），避免用户输入丢失。
       try {
-        if (event.streamingBehavior) {
-          await pi.sendMessage(
-            {
-              customType: "inline-skills",
-              content: parsed.expandedContent,
-              display: true,
-              details,
-            },
-            { deliverAs: event.streamingBehavior },
-          );
-        } else {
-          await pi.sendMessage(
-            {
-              customType: "inline-skills",
-              content: parsed.expandedContent,
-              display: true,
-              details,
-            },
-            { triggerTurn: true },
-          );
-        }
+        await pi.sendMessage(
+          {
+            customType: "inline-skills",
+            content: parsed.expandedContent,
+            display: true,
+            details,
+          },
+          { triggerTurn: true },
+        );
         // 消费输入：pi 不创建普通 user 消息，也不做原生 skill 展开
         return { action: "handled" };
       } catch {

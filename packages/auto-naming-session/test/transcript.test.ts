@@ -22,6 +22,7 @@ import type {
 } from "@earendil-works/pi-ai";
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
+  type AgentMessage,
   buildFullTranscript,
   buildFullTranscriptWithPending,
   hasAutoNamingTitle,
@@ -460,14 +461,18 @@ test("hasAutoNamingTitle: has title entry -> true", () => {
 // ============================================================================
 
 test("buildFullTranscriptWithPending: empty branch + pending user -> single line", () => {
-  const pending = { role: "user", content: "first", timestamp: Date.now() };
+  const pending: AgentMessage = {
+    role: "user" as const,
+    content: "first",
+    timestamp: Date.now(),
+  };
   strictEqual(buildFullTranscriptWithPending([], pending), "user: first");
 });
 
 test("buildFullTranscriptWithPending: existing branch + pending user -> appended", () => {
   const branch = [userMsg("old q"), assistantMsg("old a")];
-  const pending = {
-    role: "user",
+  const pending: AgentMessage = {
+    role: "user" as const,
     content: "new q",
     timestamp: Date.now(),
   };
@@ -486,8 +491,8 @@ test("buildFullTranscriptWithPending: reload-with-history case (6 old + new user
     userMsg("写测试"),
     assistantMsg("测试全绿"),
   ];
-  const pending = {
-    role: "user",
+  const pending: AgentMessage = {
+    role: "user" as const,
     content: "现在给 API 加上速率限制",
     timestamp: Date.now(),
   };
@@ -498,8 +503,8 @@ test("buildFullTranscriptWithPending: reload-with-history case (6 old + new user
 });
 
 test("buildFullTranscriptWithPending: pending with array content extracts text", () => {
-  const pending = {
-    role: "user",
+  const pending: AgentMessage = {
+    role: "user" as const,
     content: [
       { type: "text", text: "multi" },
       { type: "text", text: "block" },
@@ -511,6 +516,10 @@ test("buildFullTranscriptWithPending: pending with array content extracts text",
 
 test("buildFullTranscriptWithPending: pending empty text -> base only", () => {
   const branch = [userMsg("exists")];
-  const pending = { role: "user", content: "", timestamp: Date.now() };
+  const pending: AgentMessage = {
+    role: "user" as const,
+    content: "",
+    timestamp: Date.now(),
+  };
   strictEqual(buildFullTranscriptWithPending(branch, pending), "user: exists");
 });

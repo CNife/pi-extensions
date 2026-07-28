@@ -14,8 +14,8 @@
  */
 
 import { join } from "node:path";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type {
   FabricActionDescriptor,
   FabricInvocationContext,
@@ -113,18 +113,25 @@ const provider: FabricProvider = {
   name: PROVIDER_NAME,
   description: PROVIDER_DESCRIPTION,
   async list(_request, _context: FabricInvocationContext) {
-    return [profileDescriptor(), ...listAgentProfiles(agentsDir()).map(agentDescriptor)];
+    return [
+      profileDescriptor(),
+      ...listAgentProfiles(agentsDir()).map(agentDescriptor),
+    ];
   },
   async describe(actionName, _context: FabricInvocationContext) {
     if (actionName === PROFILE_ACTION) return profileDescriptor();
-    const summary = listAgentProfiles(agentsDir()).find((s) => s.name === actionName);
+    const summary = listAgentProfiles(agentsDir()).find(
+      (s) => s.name === actionName,
+    );
     return summary ? agentDescriptor(summary) : undefined;
   },
   async invoke(actionName, args, _context: FabricInvocationContext) {
     if (actionName === PROFILE_ACTION) {
       const name = (args as { name?: unknown }).name;
       if (typeof name !== "string" || name === "") {
-        throw new Error("agent_template.profile requires a 'name' string argument.");
+        throw new Error(
+          "agent_template.profile requires a 'name' string argument.",
+        );
       }
       return toExecParams(readProfileByName(name));
     }
@@ -160,7 +167,9 @@ export default function (pi: ExtensionAPI) {
       typeof event === "object" &&
       typeof (event as FabricProviderDiscovery).register === "function"
     ) {
-      (event as FabricProviderDiscovery).register(provider, { overwrite: true });
+      (event as FabricProviderDiscovery).register(provider, {
+        overwrite: true,
+      });
     }
   });
 }

@@ -380,6 +380,21 @@ interface RawThreadsSearchResponse {
  */
 export async function nmemSearch(
   query: string,
+  kind: "threads",
+  limit?: number,
+): Promise<ThreadsSearchResult>;
+export async function nmemSearch(
+  query: string,
+  kind?: "memories",
+  limit?: number,
+): Promise<MemoriesSearchResult>;
+export async function nmemSearch(
+  query: string,
+  kind?: SearchKind,
+  limit?: number,
+): Promise<MemoriesSearchResult | ThreadsSearchResult>;
+export async function nmemSearch(
+  query: string,
   kind: SearchKind = "memories",
   limit = 5,
 ): Promise<MemoriesSearchResult | ThreadsSearchResult> {
