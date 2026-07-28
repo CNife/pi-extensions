@@ -16,8 +16,15 @@
  * promise on those paths.
  */
 
-import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import type {
+  Model,
+  StopReason,
+  ThinkingLevel,
+  Usage,
+} from "@earendil-works/pi-ai";
+import { calculateCost } from "@earendil-works/pi-ai";
 import type {
   AgentToolResult,
   AgentToolUpdateCallback,
@@ -32,24 +39,22 @@ import {
   getMarkdownTheme,
   keyHint,
 } from "@earendil-works/pi-coding-agent";
-import { calculateCost } from "@earendil-works/pi-ai";
-import type { Model, StopReason, ThinkingLevel, Usage } from "@earendil-works/pi-ai";
-import { Container, Markdown, Text } from "@earendil-works/pi-tui";
 import type { Component, Theme } from "@earendil-works/pi-tui";
+import { Container, Markdown, Text } from "@earendil-works/pi-tui";
 
 // ─── Original package (dependency + internal deep imports) ───────────────────
 
-import originalFactory from "@juicesharp/rpiv-advisor/index.ts";
-import { ADVISOR_TOOL_NAME } from "@juicesharp/rpiv-advisor/advisor/messages.ts";
 import {
   ensureUserTailForAdvisor,
   stripInflightAdvisorCall,
 } from "@juicesharp/rpiv-advisor/advisor/context.ts";
 import { getInventoryMessage } from "@juicesharp/rpiv-advisor/advisor/inventory.ts";
+import { ADVISOR_TOOL_NAME } from "@juicesharp/rpiv-advisor/advisor/messages.ts";
 import {
   getAdvisorEffort,
   getAdvisorModel,
 } from "@juicesharp/rpiv-advisor/advisor/state.ts";
+import originalFactory from "@juicesharp/rpiv-advisor/index.ts";
 
 const require = createRequire(import.meta.url);
 const ADVISOR_SYSTEM_PROMPT = readFileSync(
@@ -122,7 +127,10 @@ function resolveStatus(
 function buildHeader(theme: Theme, d?: AdvisorDetails): string {
   return (
     theme.fg("toolTitle", theme.bold("Advisor")) +
-    theme.fg("muted", ` · ${d?.provider ?? "?"} · ${d?.model ?? "?"} · ${d?.effort ?? "high"}`)
+    theme.fg(
+      "muted",
+      ` · ${d?.provider ?? "?"} · ${d?.model ?? "?"} · ${d?.effort ?? "high"}`,
+    )
   );
 }
 
@@ -140,10 +148,13 @@ function buildFooter(
   const end = state.endedAt ?? d?.endedAt ?? (isPartial ? Date.now() : start);
   const elapsed = formatElapsed(Math.max(0, end - start));
   const statusColor =
-    status === "failed" ? "error"
-    : status === "aborted" ? "warning"
-    : status === "done" ? "success"
-    : "warning";
+    status === "failed"
+      ? "error"
+      : status === "aborted"
+        ? "warning"
+        : status === "done"
+          ? "success"
+          : "warning";
   const parts: string[] = [
     theme.fg(statusColor, status),
     theme.fg("dim", elapsed),
@@ -286,9 +297,7 @@ function renderResult(
       );
     }
   } else if (isPartial && !bodyStarted) {
-    container.addChild(
-      new Text(theme.fg("dim", "Waiting for advisor…"), 0, 0),
-    );
+    container.addChild(new Text(theme.fg("dim", "Waiting for advisor…"), 0, 0));
   }
 
   // ── Markdown body ──
@@ -391,7 +400,14 @@ export default function (pi: ExtensionAPI) {
     // Initial onUpdate — "Consulting…"
     onUpdate?.({
       content: [{ type: "text", text: `Consulting ${provider}:${modelId}…` }],
-      details: { provider, model: modelId, effort, thinking: "", body: "", startedAt },
+      details: {
+        provider,
+        model: modelId,
+        effort,
+        thinking: "",
+        body: "",
+        startedAt,
+      },
     });
 
     // Resolve streamSimple: auth-aware runtime first, then compat global
@@ -399,7 +415,12 @@ export default function (pi: ExtensionAPI) {
     const streamFn = runtimeStreamSimple ?? (await loadCompatStreamSimple());
     const requestOptions = runtimeStreamSimple
       ? { signal, reasoning: effort }
-      : { apiKey: auth.apiKey, headers: auth.headers, signal, reasoning: effort };
+      : {
+          apiKey: auth.apiKey,
+          headers: auth.headers,
+          signal,
+          reasoning: effort,
+        };
 
     try {
       const stream = streamFn(
@@ -413,13 +434,27 @@ export default function (pi: ExtensionAPI) {
           thinking += event.delta;
           onUpdate?.({
             content: [{ type: "text", text: thinking }],
-            details: { provider, model: modelId, effort, thinking, body, startedAt },
+            details: {
+              provider,
+              model: modelId,
+              effort,
+              thinking,
+              body,
+              startedAt,
+            },
           });
         } else if (event.type === "text_delta") {
           body += event.delta;
           onUpdate?.({
             content: [{ type: "text", text: body }],
-            details: { provider, model: modelId, effort, thinking, body, startedAt },
+            details: {
+              provider,
+              model: modelId,
+              effort,
+              thinking,
+              body,
+              startedAt,
+            },
           });
         } else if (event.type === "done") {
           const msg = event.message;
@@ -444,7 +479,8 @@ export default function (pi: ExtensionAPI) {
           const msg = event.error;
           finalUsage = msg.usage;
           finalStopReason = msg.stopReason;
-          errorMessage = msg.errorMessage ?? event.reason ?? "Advisor stream error";
+          errorMessage =
+            msg.errorMessage ?? event.reason ?? "Advisor stream error";
           calculateCost(advisor, finalUsage);
           onUpdate?.({
             content: [{ type: "text", text: errorMessage }],

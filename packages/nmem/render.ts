@@ -50,8 +50,8 @@ export interface SearchArgs {
 // ============================================================================
 
 export interface ThemeLike {
-  fg: (token: string, text: string) => string;
-  bold: (text: string) => string;
+  fg(token: string, text: string): string;
+  bold(text: string): string;
 }
 
 /** What renderResult can read from an AgentToolResult without importing pi types. */

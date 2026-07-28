@@ -1,18 +1,18 @@
 import assert from "node:assert/strict";
 import {
-  mkdtempSync,
+  existsSync,
+  lstatSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
   rmSync,
   writeFileSync,
-  lstatSync,
-  existsSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, it, beforeEach, afterEach } from "node:test";
+import { afterEach, beforeEach, describe, it } from "node:test";
 
-import { planSync, applyLink, runSync } from "../scripts/sync-personal.mjs";
+import { applyLink, planSync, runSync } from "../scripts/sync-personal.mjs";
 
 describe("planSync", () => {
   let root;
@@ -142,7 +142,11 @@ describe("applyLink", () => {
     mkdirSync(pkg);
     writeFileSync(join(pkg, "package.json"), "{}");
     const dirTarget = join(root, "extensions", "advisor-adapter");
-    const r = applyLink({ name: "advisor-adapter", source: pkg, target: dirTarget });
+    const r = applyLink({
+      name: "advisor-adapter",
+      source: pkg,
+      target: dirTarget,
+    });
     assert.equal(r.status, "created");
     assert.ok(lstatSync(dirTarget).isSymbolicLink());
   });
@@ -173,11 +177,18 @@ describe("runSync dry-run", () => {
   });
 
   it("dry-run does not mutate filesystem or invent settings writes", () => {
-    const out = runSync({ personalDir: personal, agentDir: agent, dryRun: true });
+    const out = runSync({
+      personalDir: personal,
+      agentDir: agent,
+      dryRun: true,
+    });
     assert.equal(out.dryRun, true);
     assert.equal(out.settingsResult, undefined);
     assert.equal(existsSync(join(agent, "extensions", "exit.ts")), false);
-    assert.equal(existsSync(join(agent, "extensions", "advisor-adapter")), false);
+    assert.equal(
+      existsSync(join(agent, "extensions", "advisor-adapter")),
+      false,
+    );
     const pkgResult = out.results.find((r) => r.name === "advisor-adapter");
     assert.equal(pkgResult.status, "would-create");
     assert.equal(pkgResult.install.status, "would-npm-install");

@@ -7,7 +7,7 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": ["packages/**"]
+    "includes": ["packages/**", "personal/**", "scripts/**", "tests/**"]
   },
   "formatter": {
     "enabled": true,

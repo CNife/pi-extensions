@@ -74,8 +74,8 @@ test("parseAgentProfile: sessionPreference/sessionHint 不进输出", () => {
       "body",
     ]),
   );
-  strictEqual(Object.prototype.hasOwnProperty.call(p, "sessionPreference"), false);
-  strictEqual(Object.prototype.hasOwnProperty.call(p, "sessionHint"), false);
+  strictEqual(Object.hasOwn(p, "sessionPreference"), false);
+  strictEqual(Object.hasOwn(p, "sessionHint"), false);
   strictEqual(p.prompt, "body");
 });
 
@@ -99,7 +99,7 @@ test("parseAgentProfile: 缺 tools -> undefined（无 tools 键）", () => {
       "body",
     ]),
   );
-  strictEqual(Object.prototype.hasOwnProperty.call(p, "tools"), false);
+  strictEqual(Object.hasOwn(p, "tools"), false);
   strictEqual(p.tools, undefined);
 });
 
@@ -187,7 +187,15 @@ test("parseAgentProfile: block array tools（缩进 - item）", () => {
 
 test("parseAgentProfile: 空 tools 值 -> undefined（默认工具集）", () => {
   const p = parseAgentProfile(
-    md(["---", "name: x", "description: d", "model: m", "tools:", "---", "body"]),
+    md([
+      "---",
+      "name: x",
+      "description: d",
+      "model: m",
+      "tools:",
+      "---",
+      "body",
+    ]),
   );
   strictEqual(p.tools, undefined);
 });
@@ -201,7 +209,8 @@ test("parseAgentProfile: 无 frontmatter -> AgentProfileParseError", () => {
 
 test("parseAgentProfile: frontmatter 未闭合 -> AgentProfileParseError", () => {
   throws(
-    () => parseAgentProfile(md(["---", "name: x", "model: m", "no closing delim"])),
+    () =>
+      parseAgentProfile(md(["---", "name: x", "model: m", "no closing delim"])),
     AgentProfileParseError,
   );
 });
@@ -226,20 +235,53 @@ test("listAgentProfiles: 多个 .md -> 按 name 字母序摘要", () => {
   try {
     writeFileSync(
       join(dir, "worker.md"),
-      md(["---", "name: worker", "description: 执行明确任务。", "model: opencode-go/deepseek-v4-flash", "---", "body"]),
+      md([
+        "---",
+        "name: worker",
+        "description: 执行明确任务。",
+        "model: opencode-go/deepseek-v4-flash",
+        "---",
+        "body",
+      ]),
     );
     writeFileSync(
       join(dir, "explorer.md"),
-      md(["---", "name: explorer", "description: 只读探索。", "model: opencode-go/deepseek-v4-flash", "---", "body"]),
+      md([
+        "---",
+        "name: explorer",
+        "description: 只读探索。",
+        "model: opencode-go/deepseek-v4-flash",
+        "---",
+        "body",
+      ]),
     );
     writeFileSync(
       join(dir, "reviewer.md"),
-      md(["---", "name: reviewer", "description: 只读审查。", "model: ark-coding-plan/glm-5.2", "---", "body"]),
+      md([
+        "---",
+        "name: reviewer",
+        "description: 只读审查。",
+        "model: ark-coding-plan/glm-5.2",
+        "---",
+        "body",
+      ]),
     );
     deepStrictEqual(listAgentProfiles(dir), [
-      { name: "explorer", description: "只读探索。", model: "opencode-go/deepseek-v4-flash" },
-      { name: "reviewer", description: "只读审查。", model: "ark-coding-plan/glm-5.2" },
-      { name: "worker", description: "执行明确任务。", model: "opencode-go/deepseek-v4-flash" },
+      {
+        name: "explorer",
+        description: "只读探索。",
+        model: "opencode-go/deepseek-v4-flash",
+      },
+      {
+        name: "reviewer",
+        description: "只读审查。",
+        model: "ark-coding-plan/glm-5.2",
+      },
+      {
+        name: "worker",
+        description: "执行明确任务。",
+        model: "opencode-go/deepseek-v4-flash",
+      },
     ]);
   } finally {
     rmSync(dir, { recursive: true, force: true });

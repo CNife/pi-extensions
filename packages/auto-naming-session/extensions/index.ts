@@ -331,8 +331,8 @@ const STATUS_KEY = "auto-naming";
 
 function setConfigErrorStatus(ctx: {
   ui: {
-    setStatus: (key: string, text: string) => void;
-    theme: { fg: (style: string, text: string) => string };
+    setStatus(key: string, text: string): void;
+    theme: { fg(style: string, text: string): string };
   };
 }): void {
   ctx.ui.setStatus(

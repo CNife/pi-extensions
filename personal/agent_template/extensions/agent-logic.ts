@@ -54,9 +54,9 @@ const NL = "\n";
 
 /** 按行切分，剥离行尾 \r（兼容 CRLF）。 */
 function splitLines(text: string): string[] {
-  return text.split(NL).map((line) =>
-    line.endsWith("\r") ? line.slice(0, -1) : line,
-  );
+  return text
+    .split(NL)
+    .map((line) => (line.endsWith("\r") ? line.slice(0, -1) : line));
 }
 
 /**
@@ -173,7 +173,10 @@ function coerceTools(raw: string | string[] | undefined): string[] | undefined {
   } else if (raw.trim() === "") {
     arr = [];
   } else {
-    arr = raw.split(",").map((s) => s.trim()).filter((s) => s !== "");
+    arr = raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s !== "");
   }
   return arr.length > 0 ? arr : undefined;
 }
@@ -201,7 +204,14 @@ export function parseAgentProfile(content: string): AgentProfile {
   const tools = coerceTools(fm.tools);
   const prompt = body.trim();
 
-  return { name, description, model, thinking, prompt, ...(tools ? { tools } : {}) };
+  return {
+    name,
+    description,
+    model,
+    thinking,
+    prompt,
+    ...(tools ? { tools } : {}),
+  };
 }
 
 /**

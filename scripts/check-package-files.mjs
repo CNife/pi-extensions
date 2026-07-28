@@ -18,15 +18,16 @@
 //
 // Exit non-zero on any violation. Run via lint-staged on package.json changes.
 
-import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
-import { join, dirname, normalize, relative, isAbsolute } from "node:path";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, isAbsolute, join, normalize, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const packagesDir = join(repoRoot, "packages");
 
 // npm always-forced files regardless of `files` whitelist.
-const FORCED = /^(package\.json|readme(\..*)?|license(\..*)?|changelog(\..*)?)$/i;
+const FORCED =
+  /^(package\.json|readme(\..*)?|license(\..*)?|changelog(\..*)?)$/i;
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
@@ -71,7 +72,9 @@ function reachableGraph(entryPaths) {
       const t = resolveLocal(file, m[1]);
       if (t) stack.push(t);
     }
-    for (const m of src.matchAll(/import\s*\(\s*['"](\.{1,2}\/[^'"]+)['"]\s*\)/g)) {
+    for (const m of src.matchAll(
+      /import\s*\(\s*['"](\.{1,2}\/[^'"]+)['"]\s*\)/g,
+    )) {
       const t = resolveLocal(file, m[1]);
       if (t) stack.push(t);
     }

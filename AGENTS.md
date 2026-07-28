@@ -12,6 +12,16 @@ CNife 的 [pi](https://pi.dev) agent 扩展集合（npm workspaces monorepo）�
 
 新产品进 `packages/`；个人参考/自用进 `personal/`；不要把 personal 当成第二个 packages。
 
+## Git 工作流
+
+main 受保护，禁止直接 push。所有改动走 feature 分支 + PR：
+
+```text
+git checkout -b feat/xxx → 开发提交 → git push -u origin feat/xxx → gh pr create
+```
+
+误提交到 main 的补救：`git checkout -b feat/xxx`（带走 commit）→ `git checkout main && git reset --hard origin/main`（回退本地 main）→ 在 feat/xxx 上继续。禁止对 main 做 force-push。
+
 ## Agent skills
 
 ### Issue tracker
