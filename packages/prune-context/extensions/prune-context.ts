@@ -63,12 +63,14 @@ function buildLineNumberMap(sessionFile: string): Map<string, number> {
  * - 否则从 firstKeptEntryId 开始收集
  * - 无 compaction entry → 收集全部 message entry
  *
- * 返回 messages + 对应的 entryId 数组（平行数组）。
+ * 返回 message + entryId 的结构化数组。
  */
-function extractLiveMessages(branchEntries: SessionEntry[]): {
-  messages: MessageLike[];
-  entryIds: string[];
-} {
+interface LiveMessage {
+  message: MessageLike;
+  entryId: string;
+}
+
+function extractLiveMessages(branchEntries: SessionEntry[]): LiveMessage[] {
   // 找最后一个 compaction entry
   let lastCompactionIdx = -1;
   let lastKeptId: string | undefined;
@@ -81,14 +83,15 @@ function extractLiveMessages(branchEntries: SessionEntry[]): {
     }
   }
 
-  const messages: MessageLike[] = [];
-  const entryIds: string[] = [];
+  const result: LiveMessage[] = [];
 
   const collect = (entries: SessionEntry[]) => {
     for (const e of entries) {
       if (e.type === "message") {
-        messages.push((e as { message: MessageLike }).message);
-        entryIds.push(e.id);
+        result.push({
+          message: (e as { message: MessageLike }).message,
+          entryId: e.id,
+        });
       }
     }
   };
@@ -96,7 +99,7 @@ function extractLiveMessages(branchEntries: SessionEntry[]): {
   if (lastCompactionIdx < 0) {
     // 无 compaction entry，收集全部
     collect(branchEntries);
-    return { messages, entryIds };
+    return result;
   }
 
   // orphan recovery：firstKeptEntryId 为空或不存在于 branch 中
@@ -106,7 +109,7 @@ function extractLiveMessages(branchEntries: SessionEntry[]): {
   if (!hasValidKeptId) {
     // 从 compaction 之后收集
     collect(branchEntries.slice(lastCompactionIdx + 1));
-    return { messages, entryIds };
+    return result;
   }
 
   // 从 firstKeptEntryId 开始收集
@@ -115,11 +118,13 @@ function extractLiveMessages(branchEntries: SessionEntry[]): {
     if (!foundKept && e.id === lastKeptId) foundKept = true;
     if (!foundKept) continue;
     if (e.type === "message") {
-      messages.push((e as { message: MessageLike }).message);
-      entryIds.push(e.id);
+      result.push({
+        message: (e as { message: MessageLike }).message,
+        entryId: e.id,
+      });
     }
   }
-  return { messages, entryIds };
+  return result;
 }
 
 export default function (pi: ExtensionAPI) {
@@ -192,22 +197,23 @@ export default function (pi: ExtensionAPI) {
     }
 
     // 提取活跃消息
-    const { messages, entryIds } = extractLiveMessages(branchEntries);
-    if (messages.length === 0) return;
+    const liveMessages = extractLiveMessages(branchEntries);
+    if (liveMessages.length === 0) return;
 
     // 构建行号映射
     const sessionFile = ctx.sessionManager.getSessionFile();
-    let messageLineNumbers: number[] | undefined;
+    let messageLineNumbers: (number | undefined)[] | undefined;
     if (sessionFile) {
       const lineMap = buildLineNumberMap(sessionFile);
-      messageLineNumbers = entryIds.map((id) => lineMap.get(id) ?? 0);
-      // 如果全部为 0（映射失败），不传行号
-      if (messageLineNumbers.every((n) => n === 0)) {
+      messageLineNumbers = liveMessages.map((lm) => lineMap.get(lm.entryId));
+      // 如果全部未命中（映射失败），不传行号
+      if (messageLineNumbers.every((n) => n === undefined)) {
         messageLineNumbers = undefined;
       }
     }
 
     // prune → format 管线
+    const messages = liveMessages.map((lm) => lm.message);
     const entries = pruneMessages(messages, messageLineNumbers);
     const files = extractFiles(messages);
     const summary = formatSummary(

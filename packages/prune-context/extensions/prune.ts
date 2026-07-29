@@ -14,6 +14,8 @@
  * 纯函数，无副作用，可独立测试。
  */
 
+import { extractText } from "./content.ts";
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -65,26 +67,6 @@ export interface MessageLike {
 // Internal helpers
 // ============================================================================
 
-/** 从 content-part 数组中提取所有 text 部分的文本。 */
-function extractText(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  const parts: string[] = [];
-  for (const part of content) {
-    if (
-      part != null &&
-      typeof part === "object" &&
-      "type" in part &&
-      (part as { type: string }).type === "text" &&
-      "text" in part &&
-      typeof (part as { text: unknown }).text === "string"
-    ) {
-      parts.push((part as { text: string }).text);
-    }
-  }
-  return parts.join("\n");
-}
-
 /** write/edit 参数裁剪：移除 payload 键。 */
 const PRUNE_ARGS_KEYS: Record<string, string[]> = {
   write: ["content"],
@@ -119,7 +101,7 @@ function buildAnchor(
   toolCallIndex: number,
   totalToolCalls: number,
 ): string {
-  if (lineNumber === undefined) return "";
+  if (lineNumber === undefined || lineNumber < 1) return "";
   // 单 toolCall 行可省略 .1
   if (totalToolCalls === 1 && toolCallIndex === 1) {
     return `#${lineNumber}`;
@@ -135,11 +117,11 @@ function buildAnchor(
  * 对消息序列执行 Plan C 确定性裁剪。
  *
  * @param messages - 活跃消息序列
- * @param messageLineNumbers - 可选，与 messages 等长的 JSONL 行号数组（1-based）
+ * @param messageLineNumbers - 可选，与 messages 等长的 JSONL 行号数组（1-based，未映射为 undefined）
  */
 export function pruneMessages(
   messages: MessageLike[],
-  messageLineNumbers?: number[],
+  messageLineNumbers?: (number | undefined)[],
 ): PrunedEntry[] {
   const entries: PrunedEntry[] = [];
 

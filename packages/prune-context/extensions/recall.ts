@@ -8,6 +8,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { extractText } from "./content.ts";
 
 // ============================================================================
 // Types
@@ -63,26 +64,6 @@ export function parseAnchor(id: string): ParsedAnchor {
 // ============================================================================
 // JSONL lookup
 // ============================================================================
-
-/** 从 content 中提取文本（string 或 content-part 数组）。 */
-function extractResultText(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  const parts: string[] = [];
-  for (const part of content) {
-    if (
-      part != null &&
-      typeof part === "object" &&
-      "type" in part &&
-      (part as { type: string }).type === "text" &&
-      "text" in part &&
-      typeof (part as { text: unknown }).text === "string"
-    ) {
-      parts.push((part as { text: string }).text);
-    }
-  }
-  return parts.join("\n");
-}
 
 /**
  * 从 JSONL 文件中按行号 + toolCall 索引恢复完整参数和结果。
@@ -176,7 +157,7 @@ export function recallFromJsonl(
       const m = e.message as Record<string, unknown> | undefined;
       if (!m || m.role !== "toolResult") continue;
       if (m.toolCallId === tc.id) {
-        resultText = extractResultText(m.content);
+        resultText = extractText(m.content);
         break;
       }
     } catch {
