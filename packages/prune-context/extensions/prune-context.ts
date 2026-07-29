@@ -10,15 +10,46 @@
  * 纯逻辑在 ./prune.ts 和 ./format.ts，本文件只做编排。
  */
 
+import { readFileSync } from "node:fs";
 import type {
   ExtensionAPI,
   SessionEntry,
 } from "@earendil-works/pi-coding-agent";
 import { formatSummary } from "./format.ts";
-import { type MessageLike, pruneMessages } from "./prune.ts";
+import { extractFiles, type MessageLike, pruneMessages } from "./prune.ts";
 
 /** /prune 命令的 customInstructions 标记，用于在钩子中识别来源。 */
 const PRUNE_MARKER = "pi-prune-context:prune";
+
+/**
+ * 从 JSONL 文件构建 entryId → lineNumber 映射。
+ *
+ * JSONL 第 1 行是 header，第 2 行起是 entry（1-based 行号）。
+ * 返回 Map<entryId, lineNumber>。
+ */
+function buildLineNumberMap(sessionFile: string): Map<string, number> {
+  const map = new Map<string, number>();
+  let content: string;
+  try {
+    content = readFileSync(sessionFile, "utf-8");
+  } catch {
+    return map;
+  }
+  const lines = content.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    try {
+      const entry = JSON.parse(line) as { id?: string };
+      if (entry.id) {
+        map.set(entry.id, i + 1); // 1-based
+      }
+    } catch {
+      // 跳过无法解析的行
+    }
+  }
+  return map;
+}
 
 /**
  * 从 branchEntries 提取活跃消息（orphan-recovery 模式）。
@@ -28,8 +59,13 @@ const PRUNE_MARKER = "pi-prune-context:prune";
  *   → 从该 compaction 之后收集所有 message entry
  * - 否则从 firstKeptEntryId 开始收集
  * - 无 compaction entry → 收集全部 message entry
+ *
+ * 返回 messages + 对应的 entryId 数组（平行数组）。
  */
-function extractLiveMessages(branchEntries: SessionEntry[]): MessageLike[] {
+function extractLiveMessages(branchEntries: SessionEntry[]): {
+  messages: MessageLike[];
+  entryIds: string[];
+} {
   // 找最后一个 compaction entry
   let lastCompactionIdx = -1;
   let lastKeptId: string | undefined;
@@ -43,15 +79,21 @@ function extractLiveMessages(branchEntries: SessionEntry[]): MessageLike[] {
   }
 
   const messages: MessageLike[] = [];
+  const entryIds: string[] = [];
+
+  const collect = (entries: SessionEntry[]) => {
+    for (const e of entries) {
+      if (e.type === "message") {
+        messages.push((e as { message: MessageLike }).message);
+        entryIds.push(e.id);
+      }
+    }
+  };
 
   if (lastCompactionIdx < 0) {
     // 无 compaction entry，收集全部
-    for (const e of branchEntries) {
-      if (e.type === "message") {
-        messages.push((e as { message: MessageLike }).message);
-      }
-    }
-    return messages;
+    collect(branchEntries);
+    return { messages, entryIds };
   }
 
   // orphan recovery：firstKeptEntryId 为空或不存在于 branch 中
@@ -60,13 +102,8 @@ function extractLiveMessages(branchEntries: SessionEntry[]): MessageLike[] {
 
   if (!hasValidKeptId) {
     // 从 compaction 之后收集
-    for (let i = lastCompactionIdx + 1; i < branchEntries.length; i++) {
-      const e = branchEntries[i];
-      if (e.type === "message") {
-        messages.push((e as { message: MessageLike }).message);
-      }
-    }
-    return messages;
+    collect(branchEntries.slice(lastCompactionIdx + 1));
+    return { messages, entryIds };
   }
 
   // 从 firstKeptEntryId 开始收集
@@ -76,9 +113,10 @@ function extractLiveMessages(branchEntries: SessionEntry[]): MessageLike[] {
     if (!foundKept) continue;
     if (e.type === "message") {
       messages.push((e as { message: MessageLike }).message);
+      entryIds.push(e.id);
     }
   }
-  return messages;
+  return { messages, entryIds };
 }
 
 export default function (pi: ExtensionAPI) {
@@ -103,7 +141,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   // session_before_compact 钩子
-  pi.on("session_before_compact", (event, _ctx) => {
+  pi.on("session_before_compact", (event, ctx) => {
     const { preparation, branchEntries, customInstructions } = event;
     // reason 在 pi ≥0.76 才有；运行时鸭子类型兼容旧版
     const reason = (event as { reason?: string }).reason;
@@ -119,14 +157,28 @@ export default function (pi: ExtensionAPI) {
     }
 
     // 提取活跃消息
-    const messages = extractLiveMessages(branchEntries);
+    const { messages, entryIds } = extractLiveMessages(branchEntries);
     if (messages.length === 0) return;
 
+    // 构建行号映射
+    const sessionFile = ctx.sessionManager.getSessionFile();
+    let messageLineNumbers: number[] | undefined;
+    if (sessionFile) {
+      const lineMap = buildLineNumberMap(sessionFile);
+      messageLineNumbers = entryIds.map((id) => lineMap.get(id) ?? 0);
+      // 如果全部为 0（映射失败），不传行号
+      if (messageLineNumbers.every((n) => n === 0)) {
+        messageLineNumbers = undefined;
+      }
+    }
+
     // prune → format 管线
-    const entries = pruneMessages(messages);
+    const entries = pruneMessages(messages, messageLineNumbers);
+    const files = extractFiles(messages);
     const summary = formatSummary(
       entries,
       messages.length,
+      files,
       preparation.previousSummary,
     );
 
@@ -138,7 +190,7 @@ export default function (pi: ExtensionAPI) {
         details: {
           prunedCount: messages.length,
           keptCount: entries.length,
-          filesCount: 0,
+          filesCount: files.length,
         },
       },
     };
