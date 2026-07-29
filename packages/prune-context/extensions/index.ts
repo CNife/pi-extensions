@@ -155,6 +155,7 @@ export default function (pi: ExtensionAPI) {
         const result = recallFromJsonl(sessionFile, line, index);
         return {
           content: [{ type: "text" as const, text: result }],
+          details: {},
         };
       },
     }),
