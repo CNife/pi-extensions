@@ -36,12 +36,28 @@ function messageContentToText(content: TextualContent): string {
   return "";
 }
 
-/** Format a single message as a transcript line `role: text`. Empty if no text. */
+/**
+ * Format a single message as a transcript line `role: text`. Empty if no text.
+ *
+ * custom 消息（如 inline-skill-completion 把 /skill:xxx 展开成自定义消息）语义上
+ * 是用户输入，按 `user:` 行输出；其 content 可能含 `<skill>...</skill>` 块（给 LLM
+ * 的技能全文），剥离后只保留用户正文，避免标题被技能内容带偏。
+ */
 function formatMessageEntry(message: AgentMessage): string {
-  if (message.role !== "user" && message.role !== "assistant") return "";
-  const text = messageContentToText(message.content as TextualContent);
+  if (
+    message.role !== "user" &&
+    message.role !== "assistant" &&
+    message.role !== "custom"
+  ) {
+    return "";
+  }
+  let text = messageContentToText(message.content as TextualContent);
+  if (message.role === "custom") {
+    text = text.replace(/<skill\b[^>]*>[\s\S]*?<\/skill>/g, "").trim();
+  }
   if (!text) return "";
-  return `${message.role}: ${text}`;
+  const label = message.role === "custom" ? "user" : message.role;
+  return `${label}: ${text}`;
 }
 
 /**

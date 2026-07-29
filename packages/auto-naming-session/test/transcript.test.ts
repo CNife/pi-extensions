@@ -523,3 +523,42 @@ test("buildFullTranscriptWithPending: pending empty text -> base only", () => {
   };
   strictEqual(buildFullTranscriptWithPending(branch, pending), "user: exists");
 });
+
+test("buildFullTranscriptWithPending: pending custom (inline-skill) strips <skill> blocks, labels as user", () => {
+  const pending: AgentMessage = {
+    role: "custom" as const,
+    customType: "inline-skills",
+    content:
+      '<skill name="an-test" location="/tmp/an-test-skill/SKILL.md">\nReferences are relative to /tmp/an-test-skill.\n\nReply "ok" and stop.\n</skill>\n我要做XXX',
+    display: true,
+    timestamp: Date.now(),
+  };
+  strictEqual(buildFullTranscriptWithPending([], pending), "user: 我要做XXX");
+});
+
+test("buildFullTranscriptWithPending: pending custom with only skill blocks (no user text) -> empty", () => {
+  const pending: AgentMessage = {
+    role: "custom" as const,
+    customType: "inline-skills",
+    content: '<skill name="an-test" location="/x">\nbody\n</skill>',
+    display: true,
+    timestamp: Date.now(),
+  };
+  // 剥离 <skill> 后无正文 -> 空串 -> 编排层 if (!transcript) return 跳过生成
+  strictEqual(buildFullTranscriptWithPending([], pending), "");
+});
+
+test("buildFullTranscriptWithPending: existing branch + pending custom -> appended as user line", () => {
+  const branch = [userMsg("old q")];
+  const pending: AgentMessage = {
+    role: "custom" as const,
+    customType: "inline-skills",
+    content: '<skill name="x" location="/y">\nbody\n</skill>\n新问题',
+    display: true,
+    timestamp: Date.now(),
+  };
+  strictEqual(
+    buildFullTranscriptWithPending(branch, pending),
+    "user: old q\n\nuser: 新问题",
+  );
+});
