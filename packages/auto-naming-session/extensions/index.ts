@@ -396,8 +396,15 @@ export default function (pi: ExtensionAPI) {
   });
 
   // 首条 user message 立即生成标题（方案 B：message_end 时当前消息尚未 append）
+  // custom 消息（如 inline-skill-completion 把 /skill:xxx 展开成的自定义消息）
+  // 语义上也是用户输入，纳入首标题生成；transcript 构建时剥离 skill 块只留用户正文。
   pi.on("message_end", async (event, ctx) => {
-    if (!event.message || event.message.role !== "user") return;
+    if (
+      !event.message ||
+      (event.message.role !== "user" && event.message.role !== "custom")
+    ) {
+      return;
+    }
     if (state.firstTitleGenerated) return;
 
     try {
