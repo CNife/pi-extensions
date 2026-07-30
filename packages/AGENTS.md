@@ -62,7 +62,7 @@ Three-level validation: file I/O → JSON parse → type check. Missing file aut
 
 ## Conventions
 
-- **Peer dependencies** only, not runtime dependencies — exception: `@cnife/pi-nmem` pulls in `@toon-format/toon` as a runtime dependency for TOON encoding (spec #88); all other extensions remain peer-only
+- **Peer dependencies** only, not runtime dependencies - exceptions: `@cnife/pi-nmem` (spec #88) and `@cnife/pi-prune-context` (spec #138) pull in `@toon-format/toon` as a runtime dependency for TOON encoding; all other extensions remain peer-only
 - **Event-driven** over command-driven when possible
 - **Chinese commit messages**, no conventional commit prefixes
 - **Double quotes, 2-space indent** (Biome enforced)
