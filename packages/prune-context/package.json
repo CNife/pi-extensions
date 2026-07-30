@@ -1,6 +1,6 @@
 {
   "name": "@cnife/pi-prune-context",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": false,
   "keywords": [
     "pi-package"
@@ -30,5 +30,8 @@
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*"
+  },
+  "dependencies": {
+    "@toon-format/toon": "^2.3.1"
   }
 }

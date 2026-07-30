@@ -161,35 +161,44 @@ after(() => {
 // ============================================================================
 
 test("recallFromJsonl: 恢复第 2 行第 1 个 toolCall（read）", () => {
-  const result = recallFromJsonl(jsonlPath, 2, 1);
-  ok(result.includes("## toolCall: read"));
-  ok(result.includes('"/src/main.ts"'));
-  ok(result.includes('"offset": 10'));
-  ok(result.includes("## toolResult"));
-  ok(result.includes("export function main()"));
-  ok(result.includes("return 42;"));
+  const d = recallFromJsonl(jsonlPath, 2, 1);
+  strictEqual(d.anchor, "#2.1");
+  strictEqual(d.line, 2);
+  strictEqual(d.index, 1);
+  strictEqual(d.toolName, "read");
+  strictEqual(d.args.path, "/src/main.ts");
+  strictEqual(d.args.offset, 10);
+  strictEqual(d.hasResult, true);
+  ok(d.resultText?.includes("export function main()"));
+  ok(d.resultText?.includes("return 42;"));
+  strictEqual(d.resultLines, 3);
+  strictEqual(d.images.length, 0);
 });
 
 test("recallFromJsonl: 恢复第 2 行第 2 个 toolCall（bash）", () => {
-  const result = recallFromJsonl(jsonlPath, 2, 2);
-  ok(result.includes("## toolCall: bash"));
-  ok(result.includes('"npm test"'));
-  ok(result.includes('"timeout": 30'));
-  ok(result.includes("## toolResult"));
-  ok(result.includes("All 5 tests passed"));
-  ok(result.includes("Done in 1.2s"));
+  const d = recallFromJsonl(jsonlPath, 2, 2);
+  strictEqual(d.anchor, "#2.2");
+  strictEqual(d.toolName, "bash");
+  strictEqual(d.args.command, "npm test");
+  strictEqual(d.args.timeout, 30);
+  strictEqual(d.hasResult, true);
+  ok(d.resultText?.includes("All 5 tests passed"));
+  ok(d.resultText?.includes("Done in 1.2s"));
 });
 
 test("recallFromJsonl: 单 toolCall 行（第 5 行）", () => {
-  const result = recallFromJsonl(jsonlPath, 5, 1);
-  ok(result.includes("## toolCall: write"));
-  ok(result.includes('"/out.ts"'));
-  ok(result.includes('"const x = 1;"'));
+  const d = recallFromJsonl(jsonlPath, 5, 1);
+  strictEqual(d.anchor, "#5.1");
+  strictEqual(d.toolName, "write");
+  strictEqual(d.args.file_path, "/out.ts");
+  strictEqual(d.args.content, "const x = 1;");
 });
 
-test("recallFromJsonl: 无匹配 toolResult 时返回提示", () => {
-  const result = recallFromJsonl(jsonlPath, 5, 1);
-  ok(result.includes("No toolResult found for this toolCall."));
+test("recallFromJsonl: 无匹配 toolResult 时 hasResult=false", () => {
+  const d = recallFromJsonl(jsonlPath, 5, 1);
+  strictEqual(d.hasResult, false);
+  strictEqual(d.resultText, undefined);
+  strictEqual(d.resultLines, 0);
 });
 
 test("recallFromJsonl: 返回全文不截断", () => {
@@ -226,8 +235,91 @@ test("recallFromJsonl: 返回全文不截断", () => {
   ];
   writeFileSync(longJsonl, lines.join("\n") + "\n");
 
-  const result = recallFromJsonl(longJsonl, 2, 1);
-  ok(result.includes(longText), "full 2000-char result should appear");
+  const d = recallFromJsonl(longJsonl, 2, 1);
+  strictEqual(d.hasResult, true);
+  ok(d.resultText?.includes(longText), "full 2000-char result should appear");
+  strictEqual(d.resultLines, 1);
+});
+
+test("recallFromJsonl: 提取 image part 元信息（不携带 base64 数据）", () => {
+  const raw = "fake-image-bytes";
+  const b64 = Buffer.from(raw).toString("base64");
+  const imgJsonl = join(tmpDir, "image.jsonl");
+  const lines = [
+    JSON.stringify({ type: "header", version: 1 }),
+    JSON.stringify({
+      id: "entry-img",
+      type: "message",
+      message: {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "tc-img",
+            name: "view_image",
+            arguments: { path: "/a.png" },
+          },
+        ],
+      },
+    }),
+    JSON.stringify({
+      id: "entry-img-result",
+      type: "message",
+      message: {
+        role: "toolResult",
+        toolCallId: "tc-img",
+        toolName: "view_image",
+        content: [
+          { type: "text", text: "screenshot" },
+          { type: "image", data: b64, mimeType: "image/png" },
+        ],
+      },
+    }),
+  ];
+  writeFileSync(imgJsonl, lines.join("\n") + "\n");
+
+  const d = recallFromJsonl(imgJsonl, 2, 1);
+  strictEqual(d.hasResult, true);
+  strictEqual(d.toolName, "view_image");
+  ok(d.resultText?.includes("screenshot"));
+  strictEqual(d.images.length, 1);
+  strictEqual(d.images[0].mimeType, "image/png");
+  strictEqual(d.images[0].bytes, raw.length);
+});
+
+test("recallFromJsonl: image-only 结果 resultLines=0（无文本 part）", () => {
+  const b64 = Buffer.from("png-bytes").toString("base64");
+  const imgOnlyJsonl = join(tmpDir, "img-only.jsonl");
+  const lines = [
+    JSON.stringify({ type: "header", version: 1 }),
+    JSON.stringify({
+      id: "entry-img-only",
+      type: "message",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "toolCall", id: "tc-io", name: "screenshot", arguments: {} },
+        ],
+      },
+    }),
+    JSON.stringify({
+      id: "entry-img-only-result",
+      type: "message",
+      message: {
+        role: "toolResult",
+        toolCallId: "tc-io",
+        toolName: "screenshot",
+        content: [{ type: "image", data: b64, mimeType: "image/png" }],
+      },
+    }),
+  ];
+  writeFileSync(imgOnlyJsonl, lines.join("\n") + "\n");
+
+  const d = recallFromJsonl(imgOnlyJsonl, 2, 1);
+  strictEqual(d.hasResult, true);
+  strictEqual(d.resultText, "");
+  strictEqual(d.resultLines, 0);
+  strictEqual(d.images.length, 1);
 });
 
 // ============================================================================

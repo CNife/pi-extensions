@@ -11,15 +11,13 @@
  */
 
 import { readFileSync } from "node:fs";
-import { Type } from "@earendil-works/pi-ai";
-import {
-  defineTool,
-  type ExtensionAPI,
-  type SessionEntry,
+import type {
+  ExtensionAPI,
+  SessionEntry,
 } from "@earendil-works/pi-coding-agent";
 import { formatSummary } from "./format.ts";
 import { extractFiles, type MessageLike, pruneMessages } from "./prune.ts";
-import { parseAnchor, recallFromJsonl } from "./recall.ts";
+import { recallTool } from "./tool.ts";
 
 /** /prune 命令的 customInstructions 标记，用于在钩子中识别来源。 */
 const PRUNE_MARKER = "pi-prune-context:prune";
@@ -128,38 +126,8 @@ function extractLiveMessages(branchEntries: SessionEntry[]): LiveMessage[] {
 }
 
 export default function (pi: ExtensionAPI) {
-  // recall 工具：行号查表恢复被裁细节
-  pi.registerTool(
-    defineTool({
-      name: "recall_pruned_tool_call",
-      label: "Recall",
-      description:
-        "Recall the full arguments and result of a pruned tool call by its anchor (e.g. #14.1). " +
-        "Use this when the summary shows a truncated tool call and you need the complete details.",
-      promptSnippet: "Recall full args/result of a pruned tool call by anchor",
-      promptGuidelines: [
-        "Pruned tool calls in the summary have anchors like `#14.1` (line 14, toolCall 1) or `#14` (single toolCall on line 14). " +
-          'Call `recall_pruned_tool_call({ id: "#14.1" })` to recover the full arguments and result.',
-      ],
-      parameters: Type.Object({
-        id: Type.String({
-          description: "Anchor from the summary, e.g. '#14.1', '14.1', or '14'",
-        }),
-      }),
-      async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-        const sessionFile = ctx.sessionManager.getSessionFile();
-        if (!sessionFile) {
-          throw new Error("Cannot recall: in-memory session has no JSONL file");
-        }
-        const { line, index } = parseAnchor(params.id);
-        const result = recallFromJsonl(sessionFile, line, index);
-        return {
-          content: [{ type: "text" as const, text: result }],
-          details: {},
-        };
-      },
-    }),
-  );
+  // recall 工具：行号查表恢复被裁细节（定义在 ./tool.ts）
+  pi.registerTool(recallTool);
 
   // /prune 命令：手动触发确定性裁剪
   pi.registerCommand("prune", {
