@@ -40,6 +40,8 @@ pi 会自动发现 `extensions/` 下的包目录（并跳过其 `node_modules`�
 # 退役 miscs / 原版顾问后（若还在 packages 列表里）
 pi remove npm:@cnife/pi-miscs
 pi remove npm:@juicesharp/rpiv-advisor
+# 被 nmem-lite 取代后
+pi remove npm:@cnife/pi-nmem
 ```
 
 原版顾问只应作为顾问小包的 `node_modules` 依赖存在，不要再当独立扩展安装。
@@ -52,6 +54,7 @@ pi remove npm:@juicesharp/rpiv-advisor
 | `debug-request-body.ts` | 文件 | `PI_DEBUG_REQUEST_BODY` 门闩下写请求体（自 miscs） |
 | `stash-input.ts` | 文件 | alt+s 暂存/恢复输入框文本：有内容时暂存并清空（已有暂存时需双击确认覆盖），空时恢复 |
 | `advisor-adapter/` | 包 | 代理 `@juicesharp/rpiv-advisor`：流式 thinking/正文 + 自定义 header/footer 渲染 |
+| `nmem-lite/` | 包 | nmem 会话自动同步 + 精简引导；召回/保存走官方 `nmem` CLI + 技能（替代 `npm:@cnife/pi-nmem`） |
 
 ## 不进仓（local-only 边界）
 
