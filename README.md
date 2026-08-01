@@ -8,7 +8,7 @@ CNife 的 [pi](https://pi.dev) agent 扩展集合。
 | --- | --- | --- |
 | 产品 | [`packages/`](packages/) | 可发布的 npm 包（`@cnife/pi-*`），进 workspaces |
 | 个人 | [`personal/`](personal/) | 与全局扩展目录同构；不进 workspaces、不 publish |
-| 退役 | [`archive/`](archive/) | 曾为产品、现停更的包，仅供查阅 |
+| 退役 | [`archive/`](archive/) | 停用的插件（含个人扩展），仅供查阅 |
 
 ## 包
 
