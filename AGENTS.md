@@ -8,7 +8,7 @@ CNife 的 [pi](https://pi.dev) agent 扩展集合（npm workspaces monorepo）�
 | --- | --- | --- |
 | 产品 | `packages/` | 可发布 `@cnife/pi-*`；进 `workspaces: ["packages/*"]`；规范见 [packages/AGENTS.md](packages/AGENTS.md) |
 | 个人 | `personal/` | 与 `~/.pi/agent/extensions` 同构；**非发布单元**、不进 workspaces；用 `scripts/sync-personal.mjs` 按条目挂载 |
-| 退役 | `archive/` | 只收曾为产品、现停更的包；流程见历史 PR / [ADR 0003](docs/adr/0003-personal-layer-miscs-retirement.md) |
+| 退役 | `archive/` | 收停用插件：曾为产品的包，或不再需要的个人扩展；流程见历史 PR / [ADR 0003](docs/adr/0003-personal-layer-miscs-retirement.md) |
 
 新产品进 `packages/`；个人参考/自用进 `personal/`；不要把 personal 当成第二个 packages。
 
