@@ -28,10 +28,6 @@ git checkout -b feat/xxx → 开发提交 → git push -u origin feat/xxx → gh
 
 GitHub Issues（`CNife/pi-extensions`），用 `gh` CLI。见 `docs/agents/issue-tracker.md`。
 
-### Triage labels
-
-默认 5 标签：`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`。见 `docs/agents/triage-labels.md`。
-
 ### Domain docs
 
 multi-context：根 `CONTEXT-MAP.md` 索引各 context 的 `CONTEXT.md`（通用 + nmem），系统级 ADR 在 `docs/adr/`。见 `docs/agents/domain.md`。

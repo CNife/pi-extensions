@@ -17,22 +17,12 @@ Infer the repo from `git remote -v` — `gh` does this automatically when run in
 
 ## Spec / ticket labels
 
-`/to-spec` publishes a spec issue; `/to-tickets` publishes tracer-bullet ticket issues. Both also get the `ready-for-agent` triage label. Apply `spec` and `ticket` respectively so the two are distinguishable in issue lists:
+`/to-spec` publishes a spec issue; `/to-tickets` publishes tracer-bullet ticket issues. Apply `spec` and `ticket` respectively so the two are distinguishable in issue lists:
 
 | Label | Color | Applied to | Meaning |
 |-------|-------|------------|---------|
 | `spec` | `#1f6feb` | `/to-spec` issue | 规格/PRD，描述要实现什么 |
 | `ticket` | `#28a745` | `/to-tickets` issue | 实现 ticket，从 spec 拆出的垂直切片 |
-
-## Pull requests as a triage surface
-
-**PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_
-
-When set to `yes`, PRs run through the same labels and states as issues, using the `gh pr` equivalents:
-
-- **Read a PR**: `gh pr view <number> --comments` and `gh pr diff <number>` for the diff.
-- **List external PRs for triage**: `gh pr list --state open --json number,title,body,labels,author,authorAssociation,comments` then keep only `authorAssociation` of `CONTRIBUTOR`, `FIRST_TIME_CONTRIBUTOR`, or `NONE` (drop `OWNER`/`MEMBER`/`COLLABORATOR`).
-- **Comment / label / close**: `gh pr comment`, `gh pr edit --add-label`/`--remove-label`, `gh pr close`.
 
 GitHub shares one number space across issues and PRs, so a bare `#42` may be either — resolve with `gh pr view 42` and fall back to `gh issue view 42`.
 
