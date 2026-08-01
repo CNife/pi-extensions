@@ -17,3 +17,4 @@
 ---
 
 `sh-guard.ts` 为早期归档的单文件扩展。
+`agent_template/` 于 2026-08-01 归档（原 personal/ 包型扩展，停止同步加载）。

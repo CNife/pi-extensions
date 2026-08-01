@@ -52,7 +52,6 @@ pi remove npm:@juicesharp/rpiv-advisor
 | `debug-request-body.ts` | 文件 | `PI_DEBUG_REQUEST_BODY` 门闩下写请求体（自 miscs） |
 | `stash-input.ts` | 文件 | alt+s 暂存/恢复输入框文本：有内容时暂存并清空（已有暂存时需双击确认覆盖），空时恢复 |
 | `advisor-adapter/` | 包 | 代理 `@juicesharp/rpiv-advisor`：流式 thinking/正文 + 自定义 header/footer 渲染 |
-| `agent_template/` | 包 | fabric FabricProvider：目录化 `~/.pi/agent/agents/*.md` agent 配置，供 fabric_exec 沙箱内 `profile` + `agents.run` 路由执行；捆绑 `agent-template` 技能 |
 
 ## 不进仓（local-only 边界）
 
