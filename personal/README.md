@@ -52,7 +52,7 @@ pi --no-extensions -e personal/<pkg>
 | `advisor-adapter/` | 包 | 代理 `@juicesharp/rpiv-advisor`：流式 thinking/正文 + 自定义 header/footer 渲染 |
 | `nmem-lite/` | 包 | nmem 会话自动同步 + 精简引导；召回/保存走官方 `nmem` CLI + 技能（替代 `npm:@cnife/pi-nmem`） |
 | `thinking-fold/` | 包 | 推理块尾部预览 + 完成折叠 + Ctrl+T 展开（trace-only，基于 `@99percentpeople/pi-thinking-fold` 简化重写，替代 `npm:@99percentpeople/pi-thinking-fold`） |
-| `skills/` | 技能组 | 6 个 pi-agent 技能（2026-08-02 自 CNife/skills 迁入，随包多机分发）：`pi-trending` / `search-pi-extensions` / `add-provider-models-to-pi` / `pi-session-query` / `fabric-best-practices` / `herdr-subagent`。**结构约束**：`personal/skills/` 下只允许一层技能目录（每目录含 `SKILL.md`），禁止放松散文件——根 manifest glob `personal/skills/*` 会把任何直接子项当技能加载 |
+| `skills/` | 技能组 | 5 个 pi-agent 技能（2026-08-02 自 CNife/skills 迁入，随包多机分发）：`pi-trending` / `search-pi-extensions` / `add-provider-models-to-pi` / `pi-session-query` / `herdr-subagent`。**结构约束**：`personal/skills/` 下只允许一层技能目录（每目录含 `SKILL.md`），禁止放松散文件——根 manifest glob `personal/skills/*` 会把任何直接子项当技能加载 |
 
 ## 不进仓（local-only 边界）
 

@@ -18,3 +18,4 @@
 
 `sh-guard.ts` 为早期归档的单文件扩展。
 `agent_template/` 于 2026-08-01 归档（原 personal/ 包型扩展，停止同步加载）。
+`fabric-best-practices/` 于 2026-08-02 归档（原 personal/skills/ 技能，停止随包加载）。
