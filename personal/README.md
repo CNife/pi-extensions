@@ -1,6 +1,6 @@
 # personal/
 
-个人扩展树：随 monorepo 根 pi 包（git 安装）分发，**不进** npm workspaces、**不**发布。根 [`package.json`](../package.json) 的 `pi` manifest 只暴露 `personal/` 下资源（文件型 `*.ts`、包型 `*/extensions`、技能 `*/skills`），`packages/` 里的产品包不会被根包重复加载。
+个人扩展树：随 monorepo 根 pi 包（git 安装）分发，**不进** npm workspaces、**不**发布。根 [`package.json`](../package.json) 的 `pi` manifest 只暴露 `personal/` 下资源（文件型 `*.ts`、包型 `*/extensions`、包内技能 `*/skills`、技能组 `skills/*`），`packages/` 里的产品包不会被根包重复加载。
 
 产品包放 `packages/`；停用的插件（曾为产品的包、不再需要的个人扩展）放 `archive/`。本目录只收「可公开参考 / 多机自用、但不值得付发布税」的扩展。
 
@@ -32,6 +32,8 @@ pi --no-extensions -e personal/<pkg>
 
 ## 本机迁移（从旧软链方案）
 
+> 2026-08-02：`~/.pi/skills/` 手工软链桥（pi 会话读 `~/.agents/skills` 的旧通道）已整体退役；pi 技能改由根包 `personal/skills/` 分发，`pi update --extensions` 自动同步。
+
 旧方案用 `scripts/sync-personal.mjs` 把 personal 条目软链到 `~/.pi/agent/extensions/`。迁移到 git 包前**必须**先清掉软链残留，否则双加载：
 
 1. 删除 `~/.pi/agent/extensions/` 下所有指向 `personal/` 的软链（文件型 `exit.ts` / `stash-input.ts` / `debug-request-body.ts`，包型 `advisor-adapter` / `nmem-lite` / `thinking-fold`）与 `~/.pi/agent/skills/` 下 nmem 技能软链（`save-thread` / `search-memory` / `distill-memory` / `read-working-memory` / `status`）；
@@ -50,6 +52,7 @@ pi --no-extensions -e personal/<pkg>
 | `advisor-adapter/` | 包 | 代理 `@juicesharp/rpiv-advisor`：流式 thinking/正文 + 自定义 header/footer 渲染 |
 | `nmem-lite/` | 包 | nmem 会话自动同步 + 精简引导；召回/保存走官方 `nmem` CLI + 技能（替代 `npm:@cnife/pi-nmem`） |
 | `thinking-fold/` | 包 | 推理块尾部预览 + 完成折叠 + Ctrl+T 展开（trace-only，基于 `@99percentpeople/pi-thinking-fold` 简化重写，替代 `npm:@99percentpeople/pi-thinking-fold`） |
+| `skills/` | 技能组 | 6 个 pi-agent 技能（2026-08-02 自 CNife/skills 迁入，随包多机分发）：`pi-trending` / `search-pi-extensions` / `add-provider-models-to-pi` / `pi-session-query` / `fabric-best-practices` / `herdr-subagent`。**结构约束**：`personal/skills/` 下只允许一层技能目录（每目录含 `SKILL.md`），禁止放松散文件——根 manifest glob `personal/skills/*` 会把任何直接子项当技能加载 |
 
 ## 不进仓（local-only 边界）
 

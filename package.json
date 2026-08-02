@@ -11,7 +11,8 @@
       "personal/*/extensions"
     ],
     "skills": [
-      "personal/*/skills"
+      "personal/*/skills",
+      "personal/skills/*"
     ]
   },
   "scripts": {
