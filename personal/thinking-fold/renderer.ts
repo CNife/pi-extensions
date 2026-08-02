@@ -1,8 +1,12 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
+import { AssistantMessageComponent } from "@earendil-works/pi-coding-agent";
 import {
-  AssistantMessageComponent,
-  truncateToVisualLines,
-} from "@earendil-works/pi-coding-agent";
+  type Component,
+  type DefaultTextStyle,
+  Markdown,
+  type MarkdownOptions,
+  type MarkdownTheme,
+} from "@earendil-works/pi-tui";
 
 export interface ThinkingFoldOptions {
   previewLines: number;
@@ -26,16 +30,28 @@ export const DEFAULT_THINKING_FOLD_OPTIONS: ThinkingFoldOptions = {
   toggleKey: "ctrl+t",
 };
 
+// Fixed trace behavior: streaming shows a tail preview, completed collapses to
+// a single timed line. No summary path, no per-model detection. Expanded turns
+// return early in rebuild(), so only these two folded behaviors remain.
+type EffectiveBehavior = "collapse" | "preview";
+
 interface ComponentState {
   fullMessage?: AssistantMessage;
   renderedMessage?: AssistantMessage;
-  width?: number;
-  dirty: boolean;
 }
 
 interface AssistantMessageInternals {
+  contentContainer?: { children?: Component[] };
   hideThinkingBlock?: boolean;
-  outputPad?: number;
+}
+
+interface MarkdownInternals {
+  text?: string;
+  paddingX?: number;
+  paddingY?: number;
+  defaultTextStyle?: DefaultTextStyle;
+  theme?: MarkdownTheme;
+  options?: MarkdownOptions;
 }
 
 interface PatchRecord {
@@ -44,7 +60,6 @@ interface PatchRecord {
   now: number;
   options: ThinkingFoldOptions;
   originalUpdate: AssistantMessageComponent["updateContent"];
-  originalRender: AssistantMessageComponent["render"];
   states: WeakMap<AssistantMessageComponent, ComponentState>;
   components: Set<WeakRef<AssistantMessageComponent>>;
   knownComponents: WeakSet<AssistantMessageComponent>;
@@ -95,41 +110,6 @@ export function formatThinkingSeconds(milliseconds: number): string {
   return `${(Math.max(0, milliseconds) / 1000).toFixed(1)}s`;
 }
 
-function foldThinkingText(
-  text: string,
-  previewLines: number,
-  width: number,
-  outputPad: number,
-): string {
-  const availableWidth = Math.max(10, width - outputPad * 2);
-  // The Text component renders trailing line breaks as extra empty rows, so a
-  // streaming chunk boundary that ends with a newline briefly grows the tail
-  // preview by one row and the folded block visibly jumps. Drop trailing line
-  // breaks before truncation to keep the folded height stable across chunks.
-  const stableText = text.replace(/\r?\n+$/, "");
-  const result = truncateToVisualLines(
-    stableText,
-    previewLines,
-    availableWidth,
-  );
-  return result.visualLines.map((line) => line.trimEnd()).join("\n");
-}
-
-function hasFoldedThinkingContent(
-  message: AssistantMessage,
-  previewLines: number,
-  width: number,
-  outputPad: number,
-): boolean {
-  const availableWidth = Math.max(10, width - outputPad * 2);
-  return message.content.some(
-    (block) =>
-      block.type === "thinking" &&
-      truncateToVisualLines(block.thinking, previewLines, availableWidth)
-        .skippedCount > 0,
-  );
-}
-
 function createStreamingThinkingLabel(
   options: ThinkingFoldOptions,
   timing: ThinkingTiming | undefined,
@@ -152,65 +132,249 @@ function createCompletedThinkingLabel(
   return `Thought for ${duration}${canExpand ? `  (${options.toggleKey} to expand)` : ""}`;
 }
 
-export function createThinkingDisplayMessage(
+interface NativeThinkingRun {
+  start: number;
+  end: number;
+  text: string;
+}
+
+interface MarkedThinkingSection {
+  marker: string;
+  text: string;
+  showLabel: boolean;
+}
+
+interface MarkedThinkingMessage {
+  message: AssistantMessage;
+  sections: MarkedThinkingSection[];
+}
+
+/**
+ * Shared render state for all thinking sections in one assistant message.
+ * Every section is rendered first; only then do we decide whether content is
+ * actually hidden and whether the expansion hint belongs in the header.
+ */
+class RenderedThinkingContext {
+  readonly sections: RenderedThinkingSection[] = [];
+  canExpand = false;
+  private preparedWidth?: number;
+
+  constructor(
+    readonly behavior: EffectiveBehavior,
+    readonly previewLines: number,
+    readonly collapseCanExpand: boolean,
+    readonly labelFor: (canExpand: boolean) => string,
+  ) {}
+
+  add(section: RenderedThinkingSection): void {
+    this.sections.push(section);
+  }
+
+  prepare(width: number): void {
+    if (this.preparedWidth === width) return;
+    for (const section of this.sections) section.prepare(width);
+    this.canExpand =
+      this.behavior === "collapse"
+        ? this.collapseCanExpand
+        : this.sections.some(
+            (section) => section.renderedLineCount > this.previewLines,
+          );
+    this.preparedWidth = width;
+  }
+
+  invalidate(): void {
+    this.preparedWidth = undefined;
+  }
+}
+
+/** Render Pi's native Markdown first, then retain its final terminal rows. */
+class RenderedThinkingSection implements Component {
+  private fullLines: string[] = [];
+  private preparedWidth?: number;
+  private labelText?: string;
+
+  constructor(
+    private readonly content: Markdown,
+    private readonly label: Markdown | undefined,
+    private readonly context: RenderedThinkingContext,
+  ) {
+    context.add(this);
+  }
+
+  get renderedLineCount(): number {
+    return this.fullLines.length;
+  }
+
+  prepare(width: number): void {
+    if (this.preparedWidth === width) return;
+    this.fullLines = this.content.render(width);
+    this.preparedWidth = width;
+  }
+
+  render(width: number): string[] {
+    this.context.prepare(width);
+    const contentLines =
+      this.context.behavior === "collapse"
+        ? []
+        : this.fullLines.slice(-this.context.previewLines);
+    if (!this.label) return contentLines;
+
+    const labelText = this.context.labelFor(this.context.canExpand);
+    if (labelText !== this.labelText) {
+      this.label.setText(labelText);
+      this.labelText = labelText;
+    }
+    return [...this.label.render(width), ...contentLines];
+  }
+
+  invalidate(): void {
+    this.content.invalidate();
+    this.label?.invalidate();
+    this.preparedWidth = undefined;
+    this.context.invalidate();
+  }
+}
+
+function collectThinkingRuns(message: AssistantMessage): NativeThinkingRun[] {
+  const runs: NativeThinkingRun[] = [];
+  let index = 0;
+  while (index < message.content.length) {
+    const block = message.content[index];
+    if (!block || block.type !== "thinking") {
+      index++;
+      continue;
+    }
+
+    const start = index;
+    const fragments: string[] = [];
+    while (index < message.content.length) {
+      const thinkingBlock = message.content[index];
+      if (!thinkingBlock || thinkingBlock.type !== "thinking") break;
+      const text = thinkingBlock.thinking.trim();
+      if (text) fragments.push(text);
+      index++;
+    }
+    runs.push({ start, end: index, text: fragments.join("\n\n") });
+  }
+  return runs;
+}
+
+function createMarkedThinkingMessage(
   message: AssistantMessage,
-  options: ThinkingFoldOptions,
-  expanded: boolean,
-  width: number,
-  outputPad = 1,
-  display: ThinkingDisplayState = {},
-): AssistantMessage {
-  if (expanded) return message;
+  behavior: EffectiveBehavior,
+): MarkedThinkingMessage | undefined {
+  const runs = collectThinkingRuns(message);
+  const firstRun = runs[0];
+  if (!firstRun) return undefined;
 
-  const firstThinkingIndex = message.content.findIndex(
-    (block) => block.type === "thinking",
+  const content = [...message.content];
+  const sections: MarkedThinkingSection[] = [];
+  const clearRun = (run: NativeThinkingRun) => {
+    for (let index = run.start; index < run.end; index++) {
+      const block = content[index];
+      if (block?.type === "thinking")
+        content[index] = { ...block, thinking: "" };
+    }
+  };
+  const markRun = (
+    run: NativeThinkingRun,
+    runIndex: number,
+    showLabel: boolean,
+  ) => {
+    clearRun(run);
+    const block = content[run.start];
+    if (!block || block.type !== "thinking") return;
+    const marker = `\uE000thinking-fold:${message.timestamp}:${runIndex}\uE001`;
+    content[run.start] = { ...block, thinking: marker };
+    sections.push({ marker, text: run.text, showLabel });
+  };
+
+  if (behavior === "collapse") {
+    for (const run of runs) clearRun(run);
+    markRun(firstRun, 0, true);
+  } else {
+    // preview: mark every run; only the first carries the label.
+    for (const run of runs) clearRun(run);
+    runs.forEach((run, runIndex) => {
+      if (runIndex === 0 || run.text) markRun(run, runIndex, runIndex === 0);
+    });
+  }
+
+  return { message: { ...message, content }, sections };
+}
+
+function getMarkdownInternals(
+  component: Component,
+): MarkdownInternals | undefined {
+  if (!(component instanceof Markdown)) return undefined;
+  const internals = component as unknown as MarkdownInternals;
+  return typeof internals.text === "string" &&
+    typeof internals.paddingX === "number" &&
+    typeof internals.paddingY === "number" &&
+    internals.theme
+    ? internals
+    : undefined;
+}
+
+function cloneNativeMarkdown(
+  component: Component,
+  text: string,
+): Markdown | undefined {
+  const internals = getMarkdownInternals(component);
+  if (
+    !internals?.theme ||
+    internals.paddingX === undefined ||
+    internals.paddingY === undefined
+  ) {
+    return undefined;
+  }
+  return new Markdown(
+    text,
+    internals.paddingX,
+    internals.paddingY,
+    internals.theme,
+    internals.defaultTextStyle,
+    internals.options,
   );
-  if (firstThinkingIndex === -1) return message;
+}
 
-  const timing = display.timing;
-  const completed = timing?.completedAt !== undefined;
-  const hasThinkingContent = message.content.some(
-    (block) => block.type === "thinking" && block.thinking.trim(),
+function replaceMarkedThinkingSections(
+  component: AssistantMessageComponent,
+  marked: MarkedThinkingMessage,
+  behavior: EffectiveBehavior,
+  previewLines: number,
+  collapseCanExpand: boolean,
+  labelFor: (canExpand: boolean) => string,
+): boolean {
+  const internals = component as unknown as AssistantMessageInternals;
+  const children = internals.contentContainer?.children;
+  if (!children) return false;
+
+  const pending = new Map(
+    marked.sections.map((section) => [section.marker, section]),
   );
-  // Fixed trace behavior: streaming shows a tail preview, completed collapses
-  // to a single timed line. No summary path, no per-model detection.
-  const canExpand = completed
-    ? hasThinkingContent
-    : hasFoldedThinkingContent(message, options.previewLines, width, outputPad);
-  const label =
-    completed && timing
-      ? createCompletedThinkingLabel(options, timing, canExpand)
-      : createStreamingThinkingLabel(
-          options,
-          timing,
-          display.now ?? Date.now(),
-          canExpand,
-        );
-  let changed = false;
-  const content = message.content.map((block, index) => {
-    if (block.type !== "thinking") return block;
+  const context = new RenderedThinkingContext(
+    behavior,
+    previewLines,
+    collapseCanExpand,
+    labelFor,
+  );
+  for (let index = 0; index < children.length; index++) {
+    const child = children[index];
+    if (!child) continue;
+    const markdown = getMarkdownInternals(child);
+    const section = markdown?.text ? pending.get(markdown.text) : undefined;
+    if (!section) continue;
 
-    const visibleThinking = completed
-      ? ""
-      : foldThinkingText(
-          block.thinking,
-          options.previewLines,
-          width,
-          outputPad,
-        );
-    const thinking =
-      index === firstThinkingIndex
-        ? visibleThinking
-          ? `${label}\n${visibleThinking}`
-          : label
-        : visibleThinking;
-
-    if (thinking === block.thinking) return block;
-    changed = true;
-    return { ...block, thinking };
-  });
-
-  return changed ? { ...message, content } : message;
+    const content = cloneNativeMarkdown(child, section.text);
+    const label = section.showLabel
+      ? cloneNativeMarkdown(child, "")
+      : undefined;
+    if (!content || (section.showLabel && !label)) return false;
+    children[index] = new RenderedThinkingSection(content, label, context);
+    pending.delete(section.marker);
+  }
+  return pending.size === 0;
 }
 
 function getPatchRecord(): PatchRecord | undefined {
@@ -236,33 +400,61 @@ function rebuild(
   state: ComponentState,
   record: PatchRecord,
 ): void {
-  if (!state.fullMessage) return;
+  const message = state.fullMessage;
+  if (!message) return;
 
   const internals = component as unknown as AssistantMessageInternals;
-  const width = state.width ?? 120;
-  const outputPad = internals.outputPad ?? 1;
-  const renderedMessage = createThinkingDisplayMessage(
-    state.fullMessage,
-    record.options,
-    record.expanded,
-    width,
-    outputPad,
-    {
-      timing: record.timings.get(state.fullMessage.timestamp),
-      now: record.now,
-    },
-  );
-
-  state.renderedMessage = renderedMessage;
-  state.dirty = false;
-
-  // Pi's native hidden mode replaces thinking with a static label. The plugin
-  // temporarily disables that branch and gives the native renderer a display-only
-  // message, while preserving Pi's setting and the original session message.
   const nativeHidden = internals.hideThinkingBlock;
   internals.hideThinkingBlock = false;
   try {
-    record.originalUpdate.call(component, renderedMessage);
+    if (
+      record.expanded ||
+      !message.content.some((block) => block.type === "thinking")
+    ) {
+      state.renderedMessage = message;
+      record.originalUpdate.call(component, message);
+      return;
+    }
+
+    const timing = record.timings.get(message.timestamp);
+    const completed = timing?.completedAt !== undefined;
+    const behavior: EffectiveBehavior = completed ? "collapse" : "preview";
+    const marked = createMarkedThinkingMessage(message, behavior);
+    if (!marked) {
+      state.renderedMessage = message;
+      record.originalUpdate.call(component, message);
+      return;
+    }
+
+    const hasThinkingContent = message.content.some(
+      (block) => block.type === "thinking" && block.thinking.trim(),
+    );
+    const labelFor = (canExpand: boolean) =>
+      completed && timing
+        ? createCompletedThinkingLabel(record.options, timing, canExpand)
+        : createStreamingThinkingLabel(
+            record.options,
+            timing,
+            record.now,
+            canExpand,
+          );
+
+    state.renderedMessage = marked.message;
+    record.originalUpdate.call(component, marked.message);
+    const replaced = replaceMarkedThinkingSections(
+      component,
+      marked,
+      behavior,
+      record.options.previewLines,
+      hasThinkingContent,
+      labelFor,
+    );
+    if (!replaced) {
+      // Pi changed its internal child layout. Never leak markers or damage the
+      // message: fall back to the complete native rendering for this component.
+      state.renderedMessage = message;
+      record.originalUpdate.call(component, message);
+    }
   } finally {
     internals.hideThinkingBlock = nativeHidden;
   }
@@ -289,14 +481,12 @@ function forEachLiveComponent(
 function createPatchRecord(options: Partial<ThinkingFoldOptions>): PatchRecord {
   const prototype = AssistantMessageComponent.prototype;
   const originalUpdate = prototype.updateContent;
-  const originalRender = prototype.render;
   const record: PatchRecord = {
     owners: 0,
     expanded: false,
     now: Date.now(),
     options: normalizedOptions(options),
     originalUpdate,
-    originalRender,
     states: new WeakMap(),
     components: new Set(),
     knownComponents: new WeakSet(),
@@ -340,53 +530,35 @@ function createPatchRecord(options: Partial<ThinkingFoldOptions>): PatchRecord {
           this.timings.get(timestamp)?.completedAt !== undefined
         )
           return;
-        state.dirty = true;
         rebuild(component, state, this);
       });
     },
     rerenderAll() {
-      forEachLiveComponent(this, (component, state) => {
-        state.dirty = true;
-        rebuild(component, state, this);
-      });
+      forEachLiveComponent(this, (component, state) =>
+        rebuild(component, state, this),
+      );
     },
     rerenderTimestamp(timestamp) {
       forEachLiveComponent(this, (component, state) => {
-        if (state.fullMessage?.timestamp !== timestamp) return;
-        state.dirty = true;
-        rebuild(component, state, this);
+        if (state.fullMessage?.timestamp === timestamp)
+          rebuild(component, state, this);
       });
     },
   };
 
   prototype.updateContent = function (message: AssistantMessage): void {
-    const state = record.states.get(this) ?? { dirty: true };
+    const state = record.states.get(this) ?? {};
 
-    // Container.invalidate() passes Pi's last rendered message back through
-    // updateContent(). Do not mistake that display-only clone for source data.
-    if (message !== state.renderedMessage) {
-      state.fullMessage = message;
-      state.dirty = true;
-    }
+    // Container.invalidate() passes Pi's last display-only marker clone back
+    // through updateContent(). Never mistake that clone for session source data.
+    if (message !== state.renderedMessage) state.fullMessage = message;
 
     record.states.set(this, state);
     if (!record.knownComponents.has(this)) {
       record.knownComponents.add(this);
       record.components.add(new WeakRef(this));
     }
-    // 回传的是上次已渲染的显示副本（Container.invalidate 回声）且无脏标记时，
-    // 重算结果必然相同，直接跳过，避免流式期间每个回声都全量截断 thinking 文本。
-    if (!state.dirty) return;
     rebuild(this, state, record);
-  };
-
-  prototype.render = function (width: number): string[] {
-    const state = record.states.get(this);
-    if (state && (state.width !== width || state.dirty)) {
-      state.width = width;
-      rebuild(this, state, record);
-    }
-    return originalRender.call(this, width);
   };
 
   setPatchRecord(record);
@@ -446,7 +618,6 @@ export function installThinkingFoldPatch(
       if (record.owners > 0 || getPatchRecord() !== record) return;
 
       prototype.updateContent = record.originalUpdate;
-      prototype.render = record.originalRender;
       setPatchRecord(undefined);
     },
   };
