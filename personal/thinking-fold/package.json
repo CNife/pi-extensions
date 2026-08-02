@@ -10,7 +10,7 @@
   "license": "MIT",
   "pi": {
     "extensions": [
-      "./index.ts"
+      "./extensions"
     ]
   },
   "peerDependencies": {

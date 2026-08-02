@@ -13,7 +13,7 @@ import {
   DEFAULT_THINKING_CURSOR_LABEL,
   installThinkingFoldPatch,
   type ThinkingFoldPatchHandle,
-} from "./renderer.ts";
+} from "../renderer.ts";
 
 const STREAM_STATUS_KEY = "thinking-fold-stream";
 const ITEM_TIMER_INTERVAL_MS = 1000;

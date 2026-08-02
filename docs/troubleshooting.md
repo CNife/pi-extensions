@@ -39,13 +39,13 @@ pi --no-extensions --no-skills -e packages/<pkg>/extensions/<file>.ts --no-sessi
 
 ### 全量加载（上线前验证）
 
-用符号链接让 pi 从本地工作目录加载，验证与其他扩展的交互：
+仓库根本身是一个 pi 包（根 `package.json` 的 `pi` manifest 暴露 `personal/`）。临时加载整个仓库验证 personal 扩展共载：
 
 ```bash
-ln -sf /home/cnife/code/pi-extensions ~/.pi/agent/git/github.com/CNife/pi-extensions
+pi --no-extensions -e . --no-session
 ```
 
-重启 pi 即加载最新代码。此方式与 `pi install git:github.com/CNife/pi-extensions` 的安装路径一致，pi 的扩展发现机制自动识别。
+`-e .` 按根 manifest 加载 `personal/` 下全部条目；`--no-extensions` 排除已装扩展避免双载。**不要**再用 `ln -sf … ~/.pi/agent/git/…` 软链技巧：该路径与 `pi install git:` 的克隆冲突，pi 更新时会 `reset --hard` 毁掉开发克隆。
 
 ### npm 包冲突处理
 

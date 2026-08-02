@@ -7,7 +7,7 @@ CNife 的 [pi](https://pi.dev) agent 扩展集合。
 | 层 | 目录 | 说明 |
 | --- | --- | --- |
 | 产品 | [`packages/`](packages/) | 可发布的 npm 包（`@cnife/pi-*`），进 workspaces |
-| 个人 | [`personal/`](personal/) | 与全局扩展目录同构；不进 workspaces、不 publish |
+| 个人 | [`personal/`](personal/) | 随根 pi 包 git 分发；不进 workspaces、不 publish |
 | 退役 | [`archive/`](archive/) | 停用的插件（含个人扩展），仅供查阅 |
 
 ## 包
@@ -40,11 +40,11 @@ pi install npm:@cnife/pi-nmem
 
 ## personal
 
-个人扩展用同步脚本按条目软链到本机 `extensions/`（包型会先装依赖）：
+个人扩展随 monorepo 根 pi 包用 git 安装（含全部 personal 扩展；不 pin ref，跟踪 main）：
 
 ```bash
-node scripts/sync-personal.mjs --dry-run
-node scripts/sync-personal.mjs
+pi install git:github.com/CNife/pi-extensions
+pi update --extensions
 ```
 
 详见 [personal/README.md](personal/README.md)。分层决策见 [ADR 0003](docs/adr/0003-personal-layer-miscs-retirement.md)。

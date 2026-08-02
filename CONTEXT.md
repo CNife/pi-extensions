@@ -17,7 +17,7 @@ npm workspace 包，发布单元（`@cnife/pi-*`）。一个包可含多个扩�
 _避免_：模块、子项目
 
 **personal**（个人扩展树）：
-`personal/` 目录——与 pi 全局扩展目录同构（顶层 `.ts` 或子目录入口），非发布单元，不进 workspaces。用同步脚本按条目软链到本机扩展目录（包型先装依赖再链目录）。
+`personal/` 目录--非发布单元，不进 workspaces。随 monorepo 根 pi 包（git 安装）分发：根 `package.json` 的 `pi` manifest 暴露 `personal/` 下扩展与技能，`pi install git:github.com/CNife/pi-extensions` 统一安装（见 ADR 0003 修订段）。
 _避免_：把 personal 当成第二个 packages / lab
 
 **工具** (tool)：

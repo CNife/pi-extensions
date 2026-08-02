@@ -17,7 +17,7 @@ pi install npm:@cnife/pi-execute-python
 
 ## 本地测试
 
-开发阶段使用符号链接避免反复 install：
+开发阶段用 `-e` 临时加载，避免反复 install：
 
 ### 隔离加载（开发单包时，推荐）
 
@@ -25,10 +25,12 @@ pi install npm:@cnife/pi-execute-python
 pi --no-extensions -e packages/<pkg>/extensions/<file>.ts --no-session
 ```
 
-### 全量加载（验证包间交互时）
+### 全量加载（验证根 pi 包 / personal 扩展时）
+
+仓库根本身是一个 pi 包（`package.json` 带 `pi` manifest，暴露 `personal/`）。临时加载整个仓库验证 personal 扩展共载：
 
 ```bash
-ln -sf /home/cnife/code/pi-extensions ~/.pi/agent/git/github.com/CNife/pi-extensions
+pi --no-extensions -e . --no-session
 ```
 
-更多测试技巧见 `docs/troubleshooting.md` 扩展本地测试章节。
+完整流程与软链地雷警告见 `docs/troubleshooting.md` 扩展本地测试章节。
