@@ -24,9 +24,9 @@ GLM-5.2 等 trace 型模型经 OpenAI Responses 协议不再被误判为 summary
 - 删除 `config.ts` 与 `/99settings` 注册（无配置，`previewLines` 固定常量 10 于 `renderer.ts`）；
 - 删除 `@99percentpeople/pi-shared-settings` 运行时依赖（peer-only）；
 - 删除 summary headline 提取与 cursor hold 计时器；
-- `createThinkingDisplayMessage` 简化为固定三态。
+- 删除 `createThinkingDisplayMessage` 及渲染前截断辅助（`foldThinkingText` / `hasFoldedThinkingContent`），改用上游 v0.1.6 的「渲染后取行」机制。
 
-monkey-patch 机制（`AssistantMessageComponent.updateContent/render` 覆盖 + timing/tick/toggle）原样保留。
+monkey-patch 收窄为只覆盖 `AssistantMessageComponent.updateContent`：让 Pi 先用原生 `Markdown` 组件渲染推理，再以私有 marker 定位并包装成取尾部行的 `RenderedThinkingSection`（timing/tick/toggle 不变）。预览保留代码块 / 表格 / 列表等原生 Markdown 格式，折叠高度按真实渲染行数钉死。
 
 ## 安装
 
@@ -49,4 +49,4 @@ pi update --extensions
 
 ## 兼容性
 
-与上游相同：monkey-patch `AssistantMessageComponent` 的 `updateContent`/`render`，Pi 改动组件 API 时扩展自动禁用并告警，不改消息原文 / 会话持久化 / 模型上下文。
+只 monkey-patch `AssistantMessageComponent.updateContent`（不再 hook `render`）。marker 仅存在于显示副本，不改 session 源消息 / 持久化 / 模型上下文。若 Pi 改动组件公开 API，扩展启动时自禁用并告警；若仅改动内部子组件布局（找不到 marker），受影响消息安全回退到完整原生渲染，不泄漏标记。
