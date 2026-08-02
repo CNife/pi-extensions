@@ -7,7 +7,7 @@ CNife 的 [pi](https://pi.dev) agent 扩展集合（npm workspaces monorepo）�
 | 层 | 目录 | 规则 |
 | --- | --- | --- |
 | 产品 | `packages/` | 可发布 `@cnife/pi-*`；进 `workspaces: ["packages/*"]`；规范见 [packages/AGENTS.md](packages/AGENTS.md) |
-| 个人 | `personal/` | 与 `~/.pi/agent/extensions` 同构；**非发布单元**、不进 workspaces；用 `scripts/sync-personal.mjs` 按条目挂载 |
+| 个人 | `personal/` | **非发布单元**、不进 workspaces；根 `package.json` 带 `pi` manifest 只暴露 `personal/`，随根 pi 包 git 分发（见 [ADR 0003](docs/adr/0003-personal-layer-miscs-retirement.md) 修订段） |
 | 退役 | `archive/` | 收停用插件：曾为产品的包，或不再需要的个人扩展；流程见历史 PR / [ADR 0003](docs/adr/0003-personal-layer-miscs-retirement.md) |
 
 新产品进 `packages/`；个人参考/自用进 `personal/`；不要把 personal 当成第二个 packages。
@@ -37,6 +37,6 @@ multi-context：根 `CONTEXT-MAP.md` 索引各 context 的 `CONTEXT.md`（通用
 - [CONTEXT.md](CONTEXT.md) - 领域术语表
 - [CONTEXT-MAP.md](CONTEXT-MAP.md) - context 索引
 - [packages/AGENTS.md](packages/AGENTS.md) - 扩展开发规范
-- [personal/README.md](personal/README.md) - 个人扩展树与同步
+- [personal/README.md](personal/README.md) - 个人扩展树与 git 包分发
 - [docs/troubleshooting.md](docs/troubleshooting.md) - 排查与本地测试
 - [docs/deployment.md](docs/deployment.md) - 部署原理

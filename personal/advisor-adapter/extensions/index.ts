@@ -6,10 +6,11 @@
  * renderResult) and replace completeSimple with streamSimple for live
  * streaming of thinking + Markdown body.
  *
- * Mounted by symlinking this directory into ~/.pi/agent/extensions/
- * (scripts/sync-personal.mjs also runs npm install for deps). Do not list
- * npm:@juicesharp/rpiv-advisor as a separate settings package — only as a
- * library dependency under this package's node_modules.
+ * Distributed via the monorepo root pi package (git install); the root
+ * manifest exposes this entry via the personal-package extensions glob. Do not list
+ * npm:@juicesharp/rpiv-advisor as a separate settings package - it is a root
+ * runtime dependency, resolved from root node_modules in git-package mode
+ * (or this package's node_modules under isolated `pi -e personal/advisor-adapter`).
  *
  * Brittleness: deep-imports upstream internal modules
  * (`@juicesharp/rpiv-advisor/advisor/*`). Upstream has no compatibility

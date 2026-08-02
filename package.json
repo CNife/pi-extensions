@@ -5,6 +5,15 @@
   "workspaces": [
     "packages/*"
   ],
+  "pi": {
+    "extensions": [
+      "personal/*.ts",
+      "personal/*/extensions"
+    ],
+    "skills": [
+      "personal/*/skills"
+    ]
+  },
   "scripts": {
     "check": "biome check . && tsc --noEmit && vitest run",
     "check:fix": "biome check --write .",
@@ -37,6 +46,9 @@
     "lint-staged": "^17.0.5",
     "typescript": "^5.9.0",
     "vitest": "^4.1.10"
+  },
+  "dependencies": {
+    "@juicesharp/rpiv-advisor": "^2.1.0"
   },
   "type": "module",
   "engines": {

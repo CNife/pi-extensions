@@ -30,17 +30,18 @@ monkey-patch 机制（`AssistantMessageComponent.updateContent/render` 覆盖 + 
 
 ## 安装
 
-本包在 `personal/` 层，经 `scripts/sync-personal.mjs` 软链到 `~/.pi/agent/extensions/`：
+本包在 `personal/` 层，随 monorepo 根 pi 包分发（详见 [personal/README.md](../README.md)）：
 
 ```bash
 # 先卸 npm 版（若装过），防双加载
 pi remove npm:@99percentpeople/pi-thinking-fold
-# 同步
-node scripts/sync-personal.mjs --dry-run
-node scripts/sync-personal.mjs
+# 安装根 git 包（含全部 personal 扩展；不 pin ref，跟踪 main）
+pi install git:github.com/CNife/pi-extensions
+# 后续拉新
+pi update --extensions
 ```
 
-Pi 自动发现 `extensions/` 下包目录，无需写进 `settings.json`。
+本地开发验证用 `pi --no-extensions -e .` 临时加载整个仓库。
 
 ## 调整预览行数
 

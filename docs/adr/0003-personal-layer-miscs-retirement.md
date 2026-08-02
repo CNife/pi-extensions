@@ -87,3 +87,35 @@ dcg-guard、herdr 状态/生成物、subagent 残留配置、密钥与会话数�
 - 换机器：clone + `node scripts/sync-personal.mjs`；包型会在本机 `personal/*/node_modules` 装依赖（gitignore）。
 - 上游 rpiv-advisor 内部路径变更时，顾问小包可能坏，需跟进。
 - miscs 用户在 npm 上看到 Deprecated 说明后改走 personal 或自备。
+
+## 修订：分发机制（软链 -> monorepo git 包）
+
+> 2026-08-02：`scripts/sync-personal.mjs` 软链方案整体退役。本段取代上文「按条目同步」「依赖安装」两节及「后果」中「换机器」一条。
+
+### 背景
+
+软链方案的根本问题：软链指向**本机绝对路径**，每台机器都要维护仓库克隆 + 记得 `git pull` + 手动跑同步脚本，常忘，导致各机 personal 扩展版本漂移；包型依赖安装也由脚本负责，同样会忘。
+
+### 决定
+
+把 monorepo 根本身变成一个 pi 包：根 `package.json` 增加 `pi` manifest（只暴露 `personal/` 下资源）与一条运行时依赖 `@juicesharp/rpiv-advisor`。所有机器（含主力开发机）改用 pi 原生 git 包机制：
+
+```bash
+pi install git:github.com/CNife/pi-extensions   # 不 pin ref，跟踪 main
+pi update --extensions                          # 各机拉新
+```
+
+- **根 manifest**：`extensions: ["personal/*.ts", "personal/*/extensions"]`、`skills: ["personal/*/skills"]`。`personal/*.ts` 收文件型条目；`personal/*/extensions` 收包型条目的扩展目录（pi glob 匹配目录后按约定扫 `.ts`）；`personal/*/skills` 收 nmem-lite 技能。`packages/` 产品包不被根包暴露，无双加载。
+- **依赖**：pi 装 git 包时只在克隆根跑一次 `npm install`，npm 只认根依赖与 workspaces；personal 不进 workspaces（分层不变）。`@juicesharp/rpiv-advisor` 是唯一真实运行时依赖，声明在根 `dependencies`，落在克隆根 `node_modules`；`advisor-adapter` 的 deep-import 沿目录向上解析到根 `node_modules`。`@earendil-works/*` 仍全走 peerDependencies。
+- **`personal/*/package.json` 保留**（本地 `pi -e personal/<pkg>` 隔离开发用），但其 `pi` manifest 在 git 包模式下不生效--git 包只有根 manifest 生效，无嵌套发现。
+- **不 pin ref**：仓库 public，https 免认证。freshness 由 `pi update --extensions` 保证（机制上限：push + update 才生效，接受延迟）。
+- **根 `package.json` 不带 `pi-package` keyword**：monorepo 不进公共 package gallery。
+- **`scripts/sync-personal.mjs` 及其测试删除**（git 历史保留）；不归档（archive 收停用插件，脚本不是插件）。
+
+### thinking-fold 布局归一
+
+`thinking-fold`（PR #146，本修订前新增）原本入口在包根 `./index.ts`，与 `advisor-adapter`/`nmem-lite` 的 `extensions/` 约定不一致，会被根 manifest glob `personal/*/extensions` 漏掉。本次将其归一：`index.ts` 移入 `extensions/`，`./renderer.ts` 改 `../renderer.ts`，自身 manifest 改 `["./extensions"]`。属结构归一，非功能改动。
+
+### 本机迁移（地雷）
+
+`~/.pi/agent/git/github.com/CNife/pi-extensions` 旧的全量加载技巧是指向开发克隆的软链。pi 更新 git 包时会 `reset --hard` + clean 克隆；若顺软链操作会毁掉开发克隆未提交的工作。故 `pi install` 前**必须先删**该软链，并清掉 `~/.pi/agent/extensions/` 下所有指向 `personal/` 的软链（文件型 exit / stash-input / debug-request-body，包型 advisor-adapter / nmem-lite / thinking-fold）与 `~/.pi/agent/skills/` 下 nmem 技能软链，避免双加载。其他机器无旧软链，直接 install。

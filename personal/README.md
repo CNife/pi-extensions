@@ -1,50 +1,44 @@
 # personal/
 
-个人扩展树：与 pi 全局扩展目录（`~/.pi/agent/extensions/`）**同构**，**不进** npm workspaces、**不**发布。
+个人扩展树：随 monorepo 根 pi 包（git 安装）分发，**不进** npm workspaces、**不**发布。根 [`package.json`](../package.json) 的 `pi` manifest 只暴露 `personal/` 下资源（文件型 `*.ts`、包型 `*/extensions`、技能 `*/skills`），`packages/` 里的产品包不会被根包重复加载。
 
 产品包放 `packages/`；停用的插件（曾为产品的包、不再需要的个人扩展）放 `archive/`。本目录只收「可公开参考 / 多机自用、但不值得付发布税」的扩展。
 
-## 挂载
+## 分发
+
+整个 monorepo 根本身就是一个 pi 包（`package.json` 带 `pi` manifest）。所有机器（含主力开发机）用 pi 原生 git 包机制安装：
 
 ```bash
-# 预览
-node scripts/sync-personal.mjs --dry-run
-
-# 写入本机
-node scripts/sync-personal.mjs
+pi install git:github.com/CNife/pi-extensions   # 不 pin ref，跟踪 main
+pi update --extensions                          # 各机拉新
 ```
 
-脚本按**条目**软链到 `~/.pi/agent/extensions/`，绝不整树替换：
+git 包不 pin ref 时，`pi update --extensions` 会拉取 main 最新。这是机制上限：push + update 才生效，接受这个延迟。与 `settings.json` 中已有的 `npm:` 产品包共存（npm 包装到 `~/.pi/agent/npm/`，git 包装到 `~/.pi/agent/git/<host>/<path>`，各自独立 module root，不互相污染）。
 
-| 条目类型 | 判定 | 动作 |
-| --- | --- | --- |
-| 文件型 | 顶层 `*.ts` | 软链文件 |
-| 包型 | 子目录含 `package.json` | 目录内 `npm install`，再软链**整个目录** |
-| 包内技能 | 包型条目下 `skills/<sub>/SKILL.md` | 额外软链 `skills/<sub>` 到 `~/.pi/agent/skills/<sub>` |
-| 其他 | `README.md`、无清单目录等 | 跳过 |
+### 依赖
 
-pi 会自动发现 `extensions/` 下的包目录（并跳过其 `node_modules`），**不必**把 personal 条目写进 `settings.json` 的 `packages`。
+pi 安装 git 包时只在克隆根跑一次 `npm install`，npm 只认根依赖与 workspaces。因此唯一的真实运行时依赖 `@juicesharp/rpiv-advisor`（`advisor-adapter` 用）声明在**根** `package.json` 的 `dependencies`，落在克隆根 `node_modules`；`advisor-adapter` 的 deep-import 沿目录向上解析到根 `node_modules`。`@earendil-works/*` 仍全部走 peerDependencies（pi 运行时提供）。
 
-包型仍要在目录内装依赖：pi 对本地路径不会跑 `npm install`，由本脚本负责（`--omit=dev --omit=peer`）。
+`personal/*/package.json` 保留各自的 `pi` manifest，仅供本地 `pi -e personal/<pkg>` 隔离开发用；git 包模式下只有根 manifest 生效，无嵌套发现。`personal/*/node_modules` 由本地 `npm install` 维护（已 gitignore）；`personal/*/package-lock.json` 进仓以固定传递依赖。
 
-### 幂等与冲突
-
-- 重复运行安全：已指向正确源的软链不动。
-- 目标已存在且**不是**软链 → **失败并提示**，避免覆盖 herdr 等 local-only 文件。
-
-### 与 settings 的边界
-
-本脚本**不修改** `settings.json`。若仍安装着会被 personal 取代的 npm 包，请自行卸掉以免双加载，例如：
+### 本地开发
 
 ```bash
-# 退役 miscs / 原版顾问后（若还在 packages 列表里）
-pi remove npm:@cnife/pi-miscs
-pi remove npm:@juicesharp/rpiv-advisor
-# 被 nmem-lite 取代后
-pi remove npm:@cnife/pi-nmem
+# 临时加载整个仓库（不写入 settings，不影响已装扩展）
+pi --no-extensions -e .
+# 隔离加载单个 personal 条目
+pi --no-extensions -e personal/<pkg>
 ```
 
-原版顾问只应作为顾问小包的 `node_modules` 依赖存在，不要再当独立扩展安装。
+## 本机迁移（从旧软链方案）
+
+旧方案用 `scripts/sync-personal.mjs` 把 personal 条目软链到 `~/.pi/agent/extensions/`。迁移到 git 包前**必须**先清掉软链残留，否则双加载：
+
+1. 删除 `~/.pi/agent/extensions/` 下所有指向 `personal/` 的软链（文件型 `exit.ts` / `stash-input.ts` / `debug-request-body.ts`，包型 `advisor-adapter` / `nmem-lite` / `thinking-fold`）与 `~/.pi/agent/skills/` 下 nmem 技能软链（`save-thread` / `search-memory` / `distill-memory` / `read-working-memory` / `status`）；
+2. **先于 install** 删除 `~/.pi/agent/git/github.com/CNife/pi-extensions` 处的旧软链（旧的全量加载技巧）--pi 更新 git 包时会 `reset --hard` + clean 克隆，若顺软链操作会毁掉开发克隆未提交的工作；
+3. `pi install git:github.com/CNife/pi-extensions`。
+
+其他机器没有旧软链，直接 `pi install` 即可。
 
 ## 当前内容
 
@@ -68,16 +62,6 @@ pi remove npm:@cnife/pi-nmem
 
 ## 顾问小包
 
-- 不要在 settings 里挂 `npm:@juicesharp/rpiv-advisor`；依赖只在本包 `node_modules`，原 factory 当库调用。
+- 不要在 settings 里挂 `npm:@juicesharp/rpiv-advisor`；它只是根包的运行时依赖（根 `package.json` `dependencies`），原 factory 当库调用。
 - **脆点**：适配器 deep-import 上游内部模块（`@juicesharp/rpiv-advisor/advisor/*`）。上游对这些路径**无兼容承诺**；上游大改时需跟进本包。
-
-### 迁移旧 standalone 适配器
-
-若本机仍有 `~/.pi/agent/extensions/advisor-adapter.ts`（文件）：
-
-```bash
-rm ~/.pi/agent/extensions/advisor-adapter.ts   # 或 mv 成 .bak
-node scripts/sync-personal.mjs
-```
-
-同步后应出现目录软链：`extensions/advisor-adapter` → `personal/advisor-adapter`。
+- **备选偏离**：若 advisor 深路径 import 无法解析到根 node_modules，把 `advisor-adapter` 摊平为 `personal/` 下单文件扩展。
