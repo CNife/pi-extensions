@@ -374,6 +374,9 @@ function createPatchRecord(options: Partial<ThinkingFoldOptions>): PatchRecord {
       record.knownComponents.add(this);
       record.components.add(new WeakRef(this));
     }
+    // 回传的是上次已渲染的显示副本（Container.invalidate 回声）且无脏标记时，
+    // 重算结果必然相同，直接跳过，避免流式期间每个回声都全量截断 thinking 文本。
+    if (!state.dirty) return;
     rebuild(this, state, record);
   };
 

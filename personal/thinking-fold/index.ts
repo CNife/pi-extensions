@@ -49,9 +49,13 @@ function restoreTimings(
     const startedAt = Number.isFinite(message.timestamp)
       ? message.timestamp
       : completedAt;
+    // 时间戳缺失/不可解析时用对方回退，避免 NaN 传播到渲染（会显示 "NaNs"）。
+    if (!Number.isFinite(startedAt) && !Number.isFinite(completedAt)) continue;
+    const start = Number.isFinite(startedAt) ? startedAt : completedAt;
+    const end = Number.isFinite(completedAt) ? completedAt : start;
     patch.setMessageTiming(message.timestamp, {
-      startedAt: Math.min(startedAt, completedAt),
-      completedAt,
+      startedAt: Math.min(start, end),
+      completedAt: end,
     });
   }
 }
@@ -191,7 +195,10 @@ export default function (pi: ExtensionAPI) {
       (event.assistantMessageEvent.type === "text_start" ||
         event.assistantMessageEvent.type === "text_delta")
     ) {
-      ctx.ui.setWorkingMessage("Responding… reasoning details unavailable");
+      const label = "Responding... reasoning details unavailable";
+      if (lastWorkingMessage === label) return;
+      lastWorkingMessage = label;
+      ctx.ui.setWorkingMessage(label);
       ctx.ui.setStatus(STREAM_STATUS_KEY, "reasoning details unavailable");
     }
   });
