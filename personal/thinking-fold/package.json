@@ -1,0 +1,21 @@
+{
+  "name": "thinking-fold",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "简化版 thinking-fold：推理块尾部预览 + 完成折叠 + Ctrl+T 展开（trace-only，基于 @99percentpeople/pi-thinking-fold 简化重写）",
+  "keywords": [
+    "pi-package"
+  ],
+  "license": "MIT",
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  }
+}
