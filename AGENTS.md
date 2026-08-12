@@ -40,3 +40,10 @@ multi-context：根 `CONTEXT-MAP.md` 索引各 context 的 `CONTEXT.md`（通用
 - [personal/README.md](personal/README.md) - 个人扩展树与 git 包分发
 - [docs/troubleshooting.md](docs/troubleshooting.md) - 排查与本地测试
 - [docs/deployment.md](docs/deployment.md) - 部署原理
+
+## Maintaining this file
+
+Keep this file for knowledge useful to almost every future agent session in this project.
+Do not repeat what the codebase already shows; point to the authoritative file or command instead.
+Prefer rewriting or pruning existing entries over appending new ones.
+When updating this file, preserve this bar for all agents and keep entries concise.

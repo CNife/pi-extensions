@@ -1,0 +1,21 @@
+{
+  "name": "plannotator-cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Plannotator 浏览器审阅/标注（CLI shell-out），注入 /pnr /pna /pnl 三命令（OMP 同名插件移植）",
+  "keywords": [
+    "pi-package"
+  ],
+  "license": "MIT",
+  "pi": {
+    "extensions": [
+      "./extensions/index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  }
+}

@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# plannotator CLI stub（测试替身）。
+#
+# 环境契约：
+#   PLANNO_STUB_LOG        - 追加记录 cwd / 参数 / 关键 env（BROWSER 等）到该文件
+#   PLANNO_STUB_STDIN_FILE - 把 stdin 全文写入该文件（/pnl 的 --stdin 内容）
+#   PLANNO_STUB_STDOUT     - 退出前打印到 stdout 的字符串
+#   PLANNO_STUB_STDERR     - 退出前打印到 stderr 的字符串
+#   PLANNO_STUB_EXIT       - 退出码（默认 0）
+#   PLANNO_STUB_SLEEP      - 退出前等待秒数（默认 0.1）
+#   PLANNO_STUB_HANG       - 非空则 exec sleep 3600（模拟死锁挂起）
+set -u
+if [ -n "${PLANNO_STUB_LOG:-}" ]; then
+  {
+    printf 'cwd=%s\n' "$PWD"
+    for a in "$@"; do printf 'arg=%s\n' "$a"; done
+    printf 'env BROWSER=%s\n' "${BROWSER:-}"
+    printf 'env PLANNOTATOR_BROWSER=%s\n' "${PLANNOTATOR_BROWSER:-}"
+    printf 'env PLANNOTATOR_AI=%s\n' "${PLANNOTATOR_AI:-}"
+  } >> "$PLANNO_STUB_LOG"
+fi
+if [ -n "${PLANNO_STUB_STDIN_FILE:-}" ]; then
+  cat > "$PLANNO_STUB_STDIN_FILE"
+fi
+sleep "${PLANNO_STUB_SLEEP:-0.1}"
+# 先输出 stdout/stderr，再决定是否挂起：精确模拟"关闭期挂起"
+# （stdout 已写完整但进程不退出，v0.26.7 残余 bug 场景）。
+[ -n "${PLANNO_STUB_STDOUT:-}" ] && printf '%s\n' "$PLANNO_STUB_STDOUT"
+[ -n "${PLANNO_STUB_STDERR:-}" ] && printf '%s\n' "$PLANNO_STUB_STDERR" >&2
+if [ -n "${PLANNO_STUB_HANG:-}" ]; then
+  # exec 让 bash 替换为 sleep：SIGKILL 直接命中同一 PID，避免遗留孤儿 sleep 孙进程。
+  exec sleep 3600
+fi
+exit "${PLANNO_STUB_EXIT:-0}"
