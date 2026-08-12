@@ -1,0 +1,3 @@
+# 本仓库无 PR 级 CI：唯一 workflow（publish.yml）只在 main push 触发。
+# 声明 no_ci 后验证管道将零检查仓库判为绿，不再空等 CI 判定。
+no_ci: true
