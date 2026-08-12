@@ -6,7 +6,7 @@
  *   /pnr 参数构造与通知、/pna 路径归一化与空参、/pnl annotate-last --stdin 内容、
  *   spawn 环境强制项（BROWSER=none PLANNOTATOR_BROWSER=none PLANNOTATOR_AI=disabled）、
  *   stdout 反馈 -> sendUserMessage 直接发送（无 deliverAs）、json 完整即投递（不等 exited）、
- *   超时兜底、无反馈 / CLI 报错通知。
+ *   超时兜底、无反馈 / CLI 报错通知、CLI 缺失（ENOENT）安装提示、
  * 断言文案与 extensions/index.ts 逐字一致。
  *
  * 运行：cd personal/plannotator-cli && npx vitest run （或仓库根 npm test）
@@ -603,6 +603,64 @@ test("正常退出无反馈: closed (no feedback) info 通知", async () => {
   );
   equal(pi.sent.length, 0, "无反馈不应投递");
 });
+
+test("CLI 缺失 (ENOENT): 安装提示通知，无投递", async () => {
+  const { scratch } = setupScratch();
+  const origPath = process.env.PATH;
+  const pi = makePi();
+  plannotatorCli(pi);
+  const notified: Notice[] = [];
+  try {
+    // PATH 去掉 fixtures 前缀：spawn 必然 ENOENT（node 异步 error 事件路径）
+    process.env.PATH = "/nonexistent-bin";
+    command(pi, "pnr").handler(undefined, makeCtx(scratch, [], notified));
+    await waitFor(() => notified.some((n) => n.type === "error"));
+    ok(
+      notified.some(
+        (n) =>
+          n.msg ===
+            "plannotator not found on PATH. Install: curl -fsSL https://plannotator.ai/install.sh | bash" &&
+          n.type === "error",
+      ),
+      "应发安装提示错误通知",
+    );
+    equal(pi.sent.length, 0, "无反馈不应投递");
+  } finally {
+    process.env.PATH = origPath;
+  }
+});
+
+test("/pnr 大体积 UTF-8 stdout 跨 pipe 分块不损坏（流式 TextDecoder 回归保护）", async () => {
+  const { scratch } = setupScratch();
+  // 84015B 纯 3 字节中文：>64KB Linux pipe 缓冲强制分块，且 65536 % 12 = 4
+  // 落在字符内部（非流式 decode 会在边界产出 U+FFFD，实测验证）；
+  // 同时 <128KB Linux 单环境变量上限（避免 execve E2BIG）。
+  const big = "审阅反馈".repeat(7000) + "结尾标记◆";
+  process.env.PLANNO_STUB_STDOUT = big;
+  const pi = makePi();
+  plannotatorCli(pi);
+  command(pi, "pnr").handler(undefined, makeCtx(scratch, [], []));
+
+  await waitFor(() => pi.sent.length > 0, 15000);
+  equal(pi.sent[0].content, big, "投递内容应与原始 stdout 逐字一致");
+  ok(!pi.sent[0].content.includes("\uFFFD"), "不应出现替换字符");
+}, 20000); // 大输出场景显式放宽 vitest 默认 5s 超时（否则 waitFor 15s 被静默截断）
+
+test("/pna 大体积 JSON feedback 跨分块解析正确", async () => {
+  const { scratch } = setupScratch();
+  const fb = "标注反馈".repeat(7000) + "◆结尾";
+  process.env.PLANNO_STUB_STDOUT = JSON.stringify({
+    decision: "annotated",
+    feedback: fb,
+  });
+  const pi = makePi();
+  plannotatorCli(pi);
+  command(pi, "pna").handler("docs.md", makeCtx(scratch, [], []));
+
+  await waitFor(() => pi.sent.length > 0, 15000);
+  deepStrictEqual(pi.sent[0], { content: fb, opts: undefined });
+  ok(!pi.sent[0].content.includes("\uFFFD"), "不应出现替换字符");
+}, 20000); // 同上
 
 // ── resolveFeedbackTimeoutMs: 默认值与 env 解析（回归保护：防 120s 默认值再现）──
 
