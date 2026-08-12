@@ -5,10 +5,10 @@ AI 排查本仓库 bug 及本地测试扩展时的速查手册。
 ## 命令 → 代码
 
 ```text
-rg 'registerCommand\("命令名"' packages/ -t ts
+rg 'registerCommand\("命令名"' packages/ personal/ -t ts
 ```
 
-例：查 `/pna` 的实现 → `rg 'registerCommand\("pna"' packages/ -t ts`
+例：查 `/pna` 的实现 → `rg 'registerCommand\("pna"' packages/ personal/ -t ts`
 
 ## 参数流转
 
@@ -87,7 +87,3 @@ PI_CODING_AGENT_DIR=/tmp/test-pi pi -ne -e packages/<pkg>/extensions/<file>.ts
 cd pi-extensions
 npx tsc --noEmit packages/<pkg>/extensions/<file>.ts
 ```
-
-## 模块依赖
-
-本项目依赖 `@plannotator/pi-extension`（`package.json` 中声明）。该包通过 npm 安装到 `node_modules/`，pi 的 jiti 加载时按 Node 标准模块解析链查找。不需要手动 symlink。
