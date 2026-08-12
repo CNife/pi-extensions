@@ -222,10 +222,12 @@ async function runPlannotator(
 
   const stderrP = (async () => {
     let text = "";
+    const decoder = new TextDecoder();
     try {
       for await (const chunk of proc.stderr ?? []) {
-        text += String(chunk);
+        text += decoder.decode(chunk, { stream: true });
       }
+      text += decoder.decode();
     } catch {
       /* spawn 失败时流也会 error，吞掉 */
     }
@@ -245,9 +247,10 @@ async function runPlannotator(
   let stdoutText = "";
   let jsonComplete = false;
   const stdoutP = (async () => {
+    const decoder = new TextDecoder();
     try {
       for await (const chunk of proc.stdout ?? []) {
-        stdoutText += String(chunk);
+        stdoutText += decoder.decode(chunk, { stream: true });
         if (opts.json) {
           try {
             JSON.parse(stdoutText.trim());
@@ -258,6 +261,7 @@ async function runPlannotator(
           }
         }
       }
+      stdoutText += decoder.decode();
     } catch {
       /* spawn 失败时流也会 error，吞掉 */
     }
