@@ -2,7 +2,7 @@
  * cnife-footer - 个人专属 pi footer。
  * 两行：第一行工作区（目录 · git分支 ↑ahead ↓behind *未提交 · 会话名），
  *       第二行模型（provider/id · thinking · ctx · $cost · tps）。
- * 全 dim，仅 ASCII + Unicode，无 nerd font，无配置。
+ * 全 muted，仅 ASCII + Unicode，无 nerd font，无配置。
  */
 
 import { basename } from "node:path";
@@ -229,9 +229,9 @@ export default function (pi: ExtensionAPI) {
       const renderLine = (parts: string[], width: number): string => {
         const joined = parts.filter((p) => p.length > 0).join(SEP);
         return truncateToWidth(
-          theme.fg("dim", joined),
+          theme.fg("muted", joined),
           width,
-          theme.fg("dim", "..."),
+          theme.fg("muted", "..."),
         );
       };
 
@@ -290,7 +290,7 @@ export default function (pi: ExtensionAPI) {
 
             return [line1, line2];
           } catch {
-            return [theme.fg("dim", "footer error")];
+            return [theme.fg("muted", "footer error")];
           }
         },
       };
@@ -303,8 +303,8 @@ export default function (pi: ExtensionAPI) {
   });
 
   // ── TPS：turn 维度计时（口径移植自 pi-tps） ──────────────────────────
-  // turn_start 起计，message_update 累积流式窗口与停顿，turn_end 用三段门控
-  // 算出生成速率。performance.now() 单调亚毫秒计时。
+  // turn_start 起计，message_update 累积流式窗口与停顿，agent_before_settle
+  // 用最终 usage 和三段门控算出生成速率。performance.now() 单调亚毫秒计时。
   pi.on("turn_start", () => {
     const now = performance.now();
     currentTiming = {
@@ -361,27 +361,37 @@ export default function (pi: ExtensionAPI) {
   pi.on("message_end", (event) => {
     if (!currentTiming) return;
     if (!isAssistantMessage(event.message)) return;
-    const message = event.message as AssistantMessage;
     const now = performance.now();
     if (currentTiming.currentMessageStartMs !== null) {
       currentTiming.totalGenerationMs +=
         now - currentTiming.currentMessageStartMs;
       currentTiming.currentMessageStartMs = null;
     }
-    currentTiming.totalOutput += message.usage.output || 0;
     currentTiming.lastUpdateMs = now;
   });
 
-  pi.on("turn_end", () => {
+  pi.on("agent_before_settle", (event) => {
     if (!currentTiming) return;
     const timing = currentTiming;
     currentTiming = null;
-    const tps = computeTps(timing);
-    // 算不出（中断/报错/突发刷盘/窗口太短）时保留上一轮值，不渲染
-    if (tps !== null) {
-      lastTps = tps;
-      activeTui?.requestRender();
+    if (event.outcome !== "completed") return;
+
+    let finalAssistant: AssistantMessage | undefined;
+    for (let i = event.context.contextMessages.length - 1; i >= 0; i--) {
+      const message = event.context.contextMessages[i];
+      if (isAssistantMessage(message)) {
+        finalAssistant = message;
+        break;
+      }
     }
+    if (!finalAssistant) return;
+    timing.totalOutput = finalAssistant.usage.output;
+
+    const tps = computeTps(timing);
+    // 算不出（突发刷盘/窗口太短）时保留上一轮值。
+    if (tps !== null) lastTps = tps;
+    // 最终 usage 已确定，刷新 TPS 与 cost。
+    activeTui?.requestRender();
   });
 
   // 切模型 / compact / 树导航后重置 TPS（含当前轮计时状态）
