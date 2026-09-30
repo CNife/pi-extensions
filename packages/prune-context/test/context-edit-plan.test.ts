@@ -391,3 +391,33 @@ test("在新的 compaction 边界中保留模型可见的自定义消息", () =>
   expect(plan.map(({ action }) => action)).toEqual(["keep", "keep"]);
   expect(contextEditCompactionBoundary(branch, plan)).toBe("custom");
 });
+test("紧凑后保留已有 replacement 产出的上下文边界", () => {
+  const branch: BranchEntryLike[] = [
+    {
+      type: "compaction",
+      id: "old-summary",
+      firstKeptEntryId: "",
+      summary: "previous summary",
+    },
+    messageEntry("omitted", { role: "assistant", content: "omit me" }),
+    {
+      type: "context_edit",
+      id: "omit-edit",
+      targetId: "omitted",
+      replacement: null,
+    },
+    messageEntry("edited", { role: "assistant", content: "kept answer" }),
+    {
+      type: "context_edit",
+      id: "keep-edit",
+      targetId: "edited",
+      replacement: { content: "kept answer" },
+    },
+    messageEntry("new", { role: "user", content: "new question" }),
+  ];
+  const liveMessages = selectLiveMessages(branch);
+  const plan = planContextEdits(liveMessages);
+
+  expect(liveMessages.map(({ entryId }) => entryId)).toEqual(["new"]);
+  expect(contextEditCompactionBoundary(branch, plan)).toBe("edited");
+});

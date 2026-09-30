@@ -223,11 +223,34 @@ export function planContextEdits(
   return plan;
 }
 
+/** Find the latest compaction and resolve its first-kept id if it exists. */
+function latestCompactionBoundary(
+  branchEntries: readonly BranchEntryLike[],
+): {
+  compactionIndex: number;
+  firstKeptEntryId: string | null | undefined;
+  firstKeptEntryIndex: number;
+} | undefined {
+  for (let i = branchEntries.length - 1; i >= 0; i--) {
+    const entry = branchEntries[i];
+    if (entry.type !== "compaction") continue;
+    const firstKeptEntryId = entry.firstKeptEntryId;
+    return {
+      compactionIndex: i,
+      firstKeptEntryId,
+      firstKeptEntryIndex: firstKeptEntryId
+        ? branchEntries.findIndex((candidate) => candidate.id === firstKeptEntryId)
+        : -1,
+    };
+  }
+  return undefined;
+}
+
 /**
- * Select messages covered by the latest compaction. A valid firstKeptEntryId
- * retains its suffix; compact-all and orphaned boundaries recover from after
- * that compaction. Existing context edits are already active decisions and are
- * not planned a second time. Compaction summaries are never rewritten.
+ * Select unedited messages covered by the latest compaction. A valid
+ * firstKeptEntryId retains its suffix; compact-all and orphaned boundaries
+ * recover from after that compaction. Existing context edits remain active but
+ * are not planned a second time. Compaction summaries are never rewritten.
  */
 export function selectLiveMessages(
   branchEntries: readonly BranchEntryLike[],
@@ -238,23 +261,12 @@ export function selectLiveMessages(
       .map((entry) => entry.targetId as string),
   );
 
-  let compactionIndex = -1;
-  let firstKeptEntryId: string | null | undefined;
-  for (let i = branchEntries.length - 1; i >= 0; i--) {
-    if (branchEntries[i].type === "compaction") {
-      compactionIndex = i;
-      firstKeptEntryId = branchEntries[i].firstKeptEntryId;
-      break;
-    }
-  }
-
-  const startIndex =
-    compactionIndex < 0
-      ? 0
-      : firstKeptEntryId &&
-          branchEntries.some((entry) => entry.id === firstKeptEntryId)
-        ? branchEntries.findIndex((entry) => entry.id === firstKeptEntryId)
-        : compactionIndex + 1;
+  const latestCompaction = latestCompactionBoundary(branchEntries);
+  const startIndex = latestCompaction
+    ? latestCompaction.firstKeptEntryIndex >= 0
+      ? latestCompaction.firstKeptEntryIndex
+      : latestCompaction.compactionIndex + 1
+    : 0;
   const liveMessages: LiveMessage[] = [];
   for (let i = startIndex; i < branchEntries.length; i++) {
     const entry = branchEntries[i];
@@ -279,23 +291,42 @@ export function selectLiveMessages(
 }
 
 /**
- * Preserve the active suffix across pi's new compaction entry. Older summary
- * entries are no longer projected once a newer compaction is appended, so
- * carry forward a valid existing boundary; recover orphaned/empty boundaries
- * at the first remaining live entry instead of pointing at the old compaction.
+ * Preserve the active suffix across the new compaction. Existing replacement
+ * edits still produce context even when their target was excluded from
+ * re-planning; choose the earliest actually surviving projected entry.
  */
 export function contextEditCompactionBoundary(
   branchEntries: readonly BranchEntryLike[],
   plan: readonly ContextEditDecision[],
 ): string | null {
-  for (let i = branchEntries.length - 1; i >= 0; i--) {
-    const entry = branchEntries[i];
-    if (entry.type !== "compaction") continue;
-    const priorBoundary = entry.firstKeptEntryId;
-    if (priorBoundary && branchEntries.some((candidate) => candidate.id === priorBoundary)) {
-      return priorBoundary;
-    }
-    return plan.find((decision) => decision.action !== "omit")?.entryId ?? null;
+  const latestCompaction = latestCompactionBoundary(branchEntries);
+  if (latestCompaction && latestCompaction.firstKeptEntryIndex >= 0) {
+    return latestCompaction.firstKeptEntryId ?? null;
   }
-  return plan.find((decision) => decision.action !== "omit")?.entryId ?? null;
+
+  const plannedByEntryId = new Map(
+    plan.map((decision) => [decision.entryId, decision] as const),
+  );
+  const replacementByTargetId = new Map<string, ContextEditEntry["replacement"]>();
+  for (const entry of branchEntries) {
+    if (entry.type === "context_edit") {
+      replacementByTargetId.set(entry.targetId, entry.replacement);
+    }
+  }
+
+  for (const entry of branchEntries) {
+    if (entry.type !== "message" && entry.type !== "custom_message") continue;
+    const decision = plannedByEntryId.get(entry.id);
+    if (decision) {
+      if (decision.action !== "omit") return entry.id;
+      continue;
+    }
+    if (
+      replacementByTargetId.has(entry.id) &&
+      replacementByTargetId.get(entry.id) !== null
+    ) {
+      return entry.id;
+    }
+  }
+  return null;
 }
