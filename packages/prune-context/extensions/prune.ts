@@ -1,275 +1,70 @@
 /**
- * prune — 确定性裁剪纯函数（Plan C 字段级规则）。
+ * prune — deterministic Plan C edits at the per-message context boundary.
  *
- * 输入 AgentMessage[]（结构兼容）+ 可选行号映射，
- * 按 Plan C 规则裁剪：
- *   - thinking：全裁
- *   - toolCall：read/bash/其他保留全参数；write 裁 content；edit 裁 oldText+newText
- *   - toolResult：toolName ∈ {read, write} 全裁；其他成功裁、失败留
- *   - bashExecution：成功裁 output 留 command；失败全留
- *   - user / assistant text：全留
- *   - custom_message：作为 user text 保留
- *
- * 输出窄类型 PrunedEntry[]，供 format 消费。
- * 纯函数，无副作用，可独立测试。
+ * The plan is pure: it neither reads session state nor mutates message content.
+ * The host applies its decisions with SessionManager.appendContextEdit.
  */
 
-import type { ContextEditEntry } from "@earendil-works/pi-coding-agent";
-import { extractText } from "./content.ts";
-// ============================================================================
-// Types
-// ============================================================================
+import type {
+  ContextEditEntry,
+  SessionEntry,
+} from "@earendil-works/pi-coding-agent";
 
-/** 裁剪后的窄类型条目（discriminated union）。 */
-export type PrunedEntry =
-  | { kind: "text"; role: "user" | "assistant"; text: string }
-  | {
-      kind: "toolCall";
-      name: string;
-      args: Record<string, unknown>;
-      anchor: string;
-    }
-  | { kind: "toolResultFailed"; toolName: string; content: string }
-  | { kind: "bashSuccess"; command: string }
-  | {
-      kind: "bashFailed";
-      command: string;
-      output: string;
-      exitCode: number | undefined;
-      cancelled: boolean;
-    };
-
-/**
- * 结构兼容 AgentMessage 的最小输入类型。
- *
- * pi 的 AgentMessage = UserMessage | AssistantMessage | ToolResultMessage
- *   | BashExecutionMessage | CustomMessage | ...
- * 纯函数只需 role + 相关字段，不依赖完整类型。
- */
 export interface MessageLike {
   role: string;
   content?: unknown;
-  // toolResult fields
   toolCallId?: string;
   toolName?: string;
   isError?: boolean;
-  // bashExecution fields
   command?: string;
   output?: string;
   exitCode?: number | undefined;
   cancelled?: boolean;
-  excludeFromContext?: boolean;
-  // custom message fields
   customType?: string;
 }
 
-// ============================================================================
-// Internal helpers
-// ============================================================================
-
-/** write/edit 参数裁剪：移除 payload 键。 */
-const PRUNE_ARGS_KEYS: Record<string, string[]> = {
-  write: ["content"],
-  edit: ["oldText", "newText"],
-};
-
-/** 对 toolCall args 执行 Plan C 裁剪（不截断，只删键）。 */
-function pruneToolCallArgs(
-  toolName: string,
-  args: Record<string, unknown>,
-): Record<string, unknown> {
-  const dropKeys = PRUNE_ARGS_KEYS[toolName];
-  if (!dropKeys) return args;
-  const result: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(args)) {
-    if (!dropKeys.includes(k)) {
-      result[k] = v;
-    }
-  }
-  return result;
-}
-
-/** toolResult 是否应保留（Plan C）。 */
-function shouldKeepToolResult(toolName: string, isError: boolean): boolean {
-  if (toolName === "read" || toolName === "write") return false;
-  return isError;
-}
-
-/** 构建锚点字符串。 */
-function buildAnchor(
-  lineNumber: number | undefined,
-  toolCallIndex: number,
-  totalToolCalls: number,
-): string {
-  if (lineNumber === undefined || lineNumber < 1) return "";
-  // 单 toolCall 行可省略 .1
-  if (totalToolCalls === 1 && toolCallIndex === 1) {
-    return `#${lineNumber}`;
-  }
-  return `#${lineNumber}.${toolCallIndex}`;
-}
-
-// ============================================================================
-// Main export
-// ============================================================================
-
-/**
- * 对消息序列执行 Plan C 确定性裁剪。
- *
- * @param messages - 活跃消息序列
- * @param messageLineNumbers - 可选，与 messages 等长的 JSONL 行号数组（1-based，未映射为 undefined）
- */
-export function pruneMessages(
-  messages: MessageLike[],
-  messageLineNumbers?: (number | undefined)[],
-): PrunedEntry[] {
-  const entries: PrunedEntry[] = [];
-
-  for (let i = 0; i < messages.length; i++) {
-    const msg = messages[i];
-    const lineNumber = messageLineNumbers?.[i];
-
-    switch (msg.role) {
-      case "user": {
-        const text = extractText(msg.content);
-        if (text) {
-          entries.push({ kind: "text", role: "user", text });
-        }
-        break;
-      }
-
-      case "assistant": {
-        const content = msg.content;
-        if (!Array.isArray(content)) {
-          // 纯字符串 content
-          if (typeof content === "string" && content) {
-            entries.push({ kind: "text", role: "assistant", text: content });
-          }
-          break;
-        }
-
-        // 提取 text parts
-        const textParts: string[] = [];
-        // 提取 toolCall parts
-        const toolCalls: Array<{
-          name: string;
-          args: Record<string, unknown>;
-        }> = [];
-
-        for (const part of content) {
-          if (part == null || typeof part !== "object" || !("type" in part)) {
-            continue;
-          }
-          const p = part as { type: string; [k: string]: unknown };
-          if (p.type === "text" && typeof p.text === "string" && p.text) {
-            textParts.push(p.text);
-          } else if (p.type === "toolCall") {
-            const name = (p.name as string) || "?";
-            const rawArgs = (p.arguments as Record<string, unknown>) ?? {};
-            toolCalls.push({ name, args: pruneToolCallArgs(name, rawArgs) });
-          }
-          // thinking: 全裁（跳过）
-        }
-
-        // 输出 text（如有）
-        if (textParts.length > 0) {
-          entries.push({
-            kind: "text",
-            role: "assistant",
-            text: textParts.join("\n"),
-          });
-        }
-
-        // 输出 toolCall（如有），不合并连续纯 toolCall 消息
-        if (toolCalls.length > 0) {
-          for (let tcIdx = 0; tcIdx < toolCalls.length; tcIdx++) {
-            const tc = toolCalls[tcIdx];
-            const anchor = buildAnchor(lineNumber, tcIdx + 1, toolCalls.length);
-            entries.push({
-              kind: "toolCall",
-              name: tc.name,
-              args: tc.args,
-              anchor,
-            });
-          }
-        }
-        break;
-      }
-
-      case "toolResult": {
-        const toolName = msg.toolName || "?";
-        const isError = msg.isError ?? false;
-        if (!shouldKeepToolResult(toolName, isError)) {
-          break; // 被裁，直接消失
-        }
-        // 失败的 toolResult：保留内容
-        const text = extractText(msg.content);
-        if (text) {
-          entries.push({ kind: "toolResultFailed", toolName, content: text });
-        }
-        break;
-      }
-
-      case "bashExecution": {
-        if (msg.excludeFromContext) break;
-        const command = msg.command || "";
-        const output = msg.output || "";
-        const exitCode = msg.exitCode;
-        const cancelled = msg.cancelled ?? false;
-        const isSuccess =
-          !cancelled && (exitCode === 0 || exitCode === undefined);
-
-        if (isSuccess) {
-          // 成功：裁 output 留 command
-          if (command) {
-            entries.push({ kind: "bashSuccess", command });
-          }
-        } else {
-          // 失败：全留
-          entries.push({
-            kind: "bashFailed",
-            command,
-            output,
-            exitCode,
-            cancelled,
-          });
-        }
-        break;
-      }
-
-      case "custom": {
-        // custom_message 作为 user text 保留
-        const text = extractText(msg.content);
-        if (text) {
-          entries.push({ kind: "text", role: "user", text });
-        }
-        break;
-      }
-
-      default:
-        // 其他 role（compactionSummary, branchSummary 等）：跳过
-        break;
-    }
-  }
-
-  return entries;
-}
-
-/** One active branch entry that can be edited in the model context. */
+/** An active, editable message paired with its original JSONL location. */
 export interface LiveMessage {
   entryId: string;
   message: MessageLike;
   lineNumber?: number;
 }
 
-/** Minimal branch-entry shape needed to follow legacy compaction boundaries. */
-export interface BranchEntryLike {
-  type: string;
+type OtherBranchEntryType = Exclude<
+  SessionEntry["type"],
+  "message" | "compaction" | "context_edit" | "custom_message"
+>;
+
+/** The official session-entry fields used by compaction/edit handling. */
+export type BranchEntryLike = {
+  type: SessionEntry["type"];
   id: string;
+  parentId?: string | null;
+  timestamp?: string;
   message?: unknown;
+  content?: unknown;
+  customType?: string;
+  display?: boolean;
   firstKeptEntryId?: string | null;
   summary?: string;
-}
+  targetId?: string;
+  replacement?: ContextEditEntry["replacement"];
+} & (
+  | { type: "message"; message: unknown }
+  | { type: "compaction"; firstKeptEntryId: string | null; summary: string }
+  | {
+      type: "context_edit";
+      targetId: string;
+      replacement: ContextEditEntry["replacement"];
+    }
+  | {
+      type: "custom_message";
+      customType: string;
+      content: unknown;
+      display: boolean;
+    }
+  | { type: OtherBranchEntryType }
+);
 
 export type ContextEditDecision =
   | { entryId: string; action: "keep" }
@@ -280,11 +75,35 @@ export type ContextEditDecision =
       replacement: NonNullable<ContextEditEntry["replacement"]>;
     };
 
+const PRUNE_ARGS_KEYS: Record<string, string[]> = {
+  write: ["content"],
+  edit: ["oldText", "newText"],
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function prunedToolArgs(
+function isMessageLike(value: unknown): value is MessageLike {
+  return isRecord(value) && typeof value.role === "string";
+}
+
+function shouldKeepToolResult(toolName: string, isError: boolean): boolean {
+  if (toolName === "read" || toolName === "write") return false;
+  return isError;
+}
+
+function buildAnchor(
+  lineNumber: number | undefined,
+  toolCallIndex: number,
+  totalToolCalls: number,
+): string {
+  if (lineNumber === undefined || lineNumber < 1) return "";
+  if (totalToolCalls === 1 && toolCallIndex === 1) return "#" + lineNumber;
+  return "#" + lineNumber + "." + toolCallIndex;
+}
+
+function pruneToolArgs(
   toolName: string,
   args: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -297,7 +116,10 @@ function prunedToolArgs(
   return result;
 }
 
-function planAssistantEdit(live: LiveMessage): ContextEditDecision {
+function planAssistantEdit(
+  live: LiveMessage,
+  prunedToolCallIds: ReadonlySet<string>,
+): ContextEditDecision {
   const { entryId, message, lineNumber } = live;
   if (!Array.isArray(message.content)) return { entryId, action: "keep" };
 
@@ -327,17 +149,22 @@ function planAssistantEdit(live: LiveMessage): ContextEditDecision {
     toolCallIndex++;
     const toolName = typeof part.name === "string" ? part.name : "?";
     const args = isRecord(part.arguments) ? part.arguments : {};
-    const trimmedArgs = prunedToolArgs(toolName, args);
-    if (trimmedArgs !== args) {
-      plannedContent.push({ ...part, arguments: trimmedArgs });
+    const prunedArgs = pruneToolArgs(toolName, args);
+    const argsWerePruned = prunedArgs !== args;
+    if (argsWerePruned) {
+      plannedContent.push({ ...part, arguments: prunedArgs });
       changed = true;
     } else {
       plannedContent.push(part);
     }
 
-    const anchor = buildAnchor(lineNumber, toolCallIndex, toolCallCount);
+    const callId = typeof part.id === "string" ? part.id : undefined;
+    const anchor =
+      argsWerePruned || (callId !== undefined && prunedToolCallIds.has(callId))
+        ? buildAnchor(lineNumber, toolCallIndex, toolCallCount)
+        : "";
     if (anchor) {
-      // The original call remains available to recall by JSONL row and call index.
+      // The original call remains available to recall by JSONL row and index.
       plannedContent.push({ type: "text", text: anchor });
       changed = true;
     }
@@ -358,44 +185,59 @@ function planAssistantEdit(live: LiveMessage): ContextEditDecision {
   };
 }
 
-/**
- * Build a per-entry Plan C edit plan. Bash execution entries stay untouched:
- * pi's appendContextEdit API does not allow editing that message role.
- */
+/** Return one keep/omit/replacement decision for every active message. */
 export function planContextEdits(
   liveMessages: readonly LiveMessage[],
 ): ContextEditDecision[] {
+  const prunedToolCallIds = new Set<string>();
+  for (const { message } of liveMessages) {
+    if (message.role !== "toolResult") continue;
+    const toolName = message.toolName || "?";
+    if (
+      !shouldKeepToolResult(toolName, message.isError ?? false) &&
+      typeof message.toolCallId === "string"
+    ) {
+      prunedToolCallIds.add(message.toolCallId);
+    }
+  }
+
   const plan: ContextEditDecision[] = [];
   for (const live of liveMessages) {
     const { entryId, message } = live;
     if (message.role === "assistant") {
-      plan.push(planAssistantEdit(live));
+      plan.push(planAssistantEdit(live, prunedToolCallIds));
       continue;
     }
     if (message.role === "toolResult") {
       const toolName = message.toolName || "?";
-      const isError = message.isError ?? false;
-      if (shouldKeepToolResult(toolName, isError)) {
+      if (shouldKeepToolResult(toolName, message.isError ?? false)) {
         plan.push({ entryId, action: "keep" });
       } else {
         plan.push({ entryId, action: "omit", replacement: null });
       }
       continue;
     }
-    // user text, custom messages, and unsupported roles remain unchanged.
+    // appendContextEdit does not permit bashExecution; leave that role intact.
     plan.push({ entryId, action: "keep" });
   }
   return plan;
 }
 
 /**
- * Select messages covered by the latest compaction boundary. Legacy compact-all
- * and orphaned boundaries recover from entries after that compaction; a valid
- * firstKeptEntryId retains its suffix. Compaction summaries are never edited.
+ * Select messages covered by the latest compaction. A valid firstKeptEntryId
+ * retains its suffix; compact-all and orphaned boundaries recover from after
+ * that compaction. Existing context edits are already active decisions and are
+ * not planned a second time. Compaction summaries are never rewritten.
  */
 export function selectLiveMessages(
   branchEntries: readonly BranchEntryLike[],
 ): LiveMessage[] {
+  const editedEntryIds = new Set(
+    branchEntries
+      .filter((entry) => entry.type === "context_edit" && entry.targetId)
+      .map((entry) => entry.targetId as string),
+  );
+
   let compactionIndex = -1;
   let firstKeptEntryId: string | null | undefined;
   for (let i = branchEntries.length - 1; i >= 0; i--) {
@@ -416,61 +258,44 @@ export function selectLiveMessages(
   const liveMessages: LiveMessage[] = [];
   for (let i = startIndex; i < branchEntries.length; i++) {
     const entry = branchEntries[i];
-    if (entry.type !== "message" || !isRecord(entry.message)) continue;
-    if (typeof entry.message.role !== "string") continue;
-    liveMessages.push({
-      entryId: entry.id,
-      message: entry.message as MessageLike,
-    });
+    if (editedEntryIds.has(entry.id)) continue;
+    if (entry.type === "message" && isMessageLike(entry.message)) {
+      liveMessages.push({
+        entryId: entry.id,
+        message: entry.message,
+      });
+    } else if (entry.type === "custom_message") {
+      liveMessages.push({
+        entryId: entry.id,
+        message: {
+          role: "custom",
+          content: entry.content,
+          customType: entry.customType,
+        },
+      });
+    }
   }
   return liveMessages;
 }
 
-/** Use the previous compaction itself as a stable handoff when one exists. */
+/**
+ * Preserve the active suffix across pi's new compaction entry. Older summary
+ * entries are no longer projected once a newer compaction is appended, so
+ * carry forward a valid existing boundary; recover orphaned/empty boundaries
+ * at the first remaining live entry instead of pointing at the old compaction.
+ */
 export function contextEditCompactionBoundary(
   branchEntries: readonly BranchEntryLike[],
   plan: readonly ContextEditDecision[],
 ): string | null {
   for (let i = branchEntries.length - 1; i >= 0; i--) {
     const entry = branchEntries[i];
-    if (entry.type === "compaction") return entry.id || null;
+    if (entry.type !== "compaction") continue;
+    const priorBoundary = entry.firstKeptEntryId;
+    if (priorBoundary && branchEntries.some((candidate) => candidate.id === priorBoundary)) {
+      return priorBoundary;
+    }
+    return plan.find((decision) => decision.action !== "omit")?.entryId ?? null;
   }
   return plan.find((decision) => decision.action !== "omit")?.entryId ?? null;
-}
-
-/**
- * 从消息序列中提取文件列表（从 toolCall args 的 path/file_path 派生，零正则）。
- */
-export function extractFiles(messages: MessageLike[]): string[] {
-  const files: string[] = [];
-  const seen = new Set<string>();
-
-  for (const msg of messages) {
-    if (msg.role !== "assistant") continue;
-    const content = msg.content;
-    if (!Array.isArray(content)) continue;
-
-    for (const part of content) {
-      if (
-        part == null ||
-        typeof part !== "object" ||
-        !("type" in part) ||
-        (part as { type: string }).type !== "toolCall"
-      ) {
-        continue;
-      }
-      const args = (part as { arguments?: Record<string, unknown> }).arguments;
-      if (!args || typeof args !== "object") continue;
-
-      for (const key of ["path", "file_path", "filePath"]) {
-        const p = args[key];
-        if (typeof p === "string" && p && !seen.has(p)) {
-          seen.add(p);
-          files.push(p);
-        }
-      }
-    }
-  }
-
-  return files;
 }
