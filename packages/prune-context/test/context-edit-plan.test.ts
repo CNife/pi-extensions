@@ -179,7 +179,8 @@ test("省略已裁剪的工具结果并保留未裁剪的失败结果", () => {
 });
 
 test("保留 bashExecution 条目，因为 appendContextEdit 无法编辑上游该角色", () => {
-  expect(planContextEdits([
+  expect(
+    planContextEdits([
       live("bash-success", {
         role: "bashExecution",
         command: "make",
@@ -192,10 +193,11 @@ test("保留 bashExecution 条目，因为 appendContextEdit 无法编辑上游�
         output: "failure output",
         exitCode: 1,
       }),
-    ])).toEqual([
-      { entryId: "bash-success", action: "keep" },
-      { entryId: "bash-failure", action: "keep" },
-    ],);
+    ]),
+  ).toEqual([
+    { entryId: "bash-success", action: "keep" },
+    { entryId: "bash-failure", action: "keep" },
+  ]);
 });
 
 test("没有行映射时仍裁剪字段，但省略不可用的 recall 锚点", () => {
@@ -251,8 +253,12 @@ test("使用旧版 compaction 保留后缀，并恢复孤立或 compact-all 边�
     messageEntry("after", { role: "assistant", content: "newer message" }),
   ];
 
-  expect(selectLiveMessages(entries).map(({ entryId }) => entryId)).toEqual(["kept", "after"],);
-  expect(selectLiveMessages([
+  expect(selectLiveMessages(entries).map(({ entryId }) => entryId)).toEqual([
+    "kept",
+    "after",
+  ]);
+  expect(
+    selectLiveMessages([
       messageEntry("old", { role: "user", content: "before" }),
       {
         type: "compaction",
@@ -261,8 +267,10 @@ test("使用旧版 compaction 保留后缀，并恢复孤立或 compact-all 边�
         summary: "legacy summary",
       },
       messageEntry("after-orphan", { role: "user", content: "after" }),
-    ]).map(({ entryId }) => entryId)).toEqual(["after-orphan"],);
-  expect(selectLiveMessages([
+    ]).map(({ entryId }) => entryId),
+  ).toEqual(["after-orphan"]);
+  expect(
+    selectLiveMessages([
       messageEntry("old", { role: "user", content: "before" }),
       {
         type: "compaction",
@@ -271,7 +279,8 @@ test("使用旧版 compaction 保留后缀，并恢复孤立或 compact-all 边�
         summary: "legacy summary",
       },
       messageEntry("after-compact-all", { role: "user", content: "after" }),
-    ]).map(({ entryId }) => entryId)).toEqual(["after-compact-all"],);
+    ]).map(({ entryId }) => entryId),
+  ).toEqual(["after-compact-all"]);
 });
 
 test("选择有效的 compaction 交接点，并避免复用孤立的 firstKeptEntryId", () => {
@@ -286,24 +295,27 @@ test("选择有效的 compaction 交接点，并避免复用孤立的 firstKeptE
     messageEntry("after", { role: "assistant", content: "answer" }),
   ];
 
-  expect(contextEditCompactionBoundary(branch, [
+  expect(
+    contextEditCompactionBoundary(branch, [
       { entryId: "after", action: "keep" },
-    ])).toBe("after",);
-  expect(contextEditCompactionBoundary(
-      [
-        branch[0],
-        { ...branch[1], firstKeptEntryId: "kept" },
-        branch[2],
-      ],
+    ]),
+  ).toBe("after");
+  expect(
+    contextEditCompactionBoundary(
+      [branch[0], { ...branch[1], firstKeptEntryId: "kept" }, branch[2]],
       [{ entryId: "after", action: "keep" }],
-    )).toBe("kept",);
-  expect(contextEditCompactionBoundary(
+    ),
+  ).toBe("kept");
+  expect(
+    contextEditCompactionBoundary(
       [messageEntry("only", { role: "assistant", content: "x" })],
       [{ entryId: "only", action: "omit", replacement: null }],
-    )).toBe(null,);
+    ),
+  ).toBe(null);
 });
 test("不重新规划已有分支内 context edit 的条目", () => {
-  expect(selectLiveMessages([
+  expect(
+    selectLiveMessages([
       messageEntry("edited", { role: "assistant", content: "already trimmed" }),
       {
         type: "context_edit",
@@ -312,10 +324,12 @@ test("不重新规划已有分支内 context edit 的条目", () => {
         replacement: { content: "already trimmed" },
       },
       messageEntry("new", { role: "user", content: "new message" }),
-    ]).map(({ entryId }) => entryId)).toEqual(["new"],);
+    ]).map(({ entryId }) => entryId),
+  ).toEqual(["new"]);
 });
 test("省略仅含 thinking 的 assistant 条目，并使用单次调用的短锚点", () => {
-  expect(planContextEdits([
+  expect(
+    planContextEdits([
       live("thinking-only", {
         role: "assistant",
         content: [{ type: "thinking", thinking: "private reasoning" }],
@@ -335,27 +349,29 @@ test("省略仅含 thinking 的 assistant 条目，并使用单次调用的短�
         },
         23,
       ),
-    ])).toEqual([
-      { entryId: "thinking-only", action: "omit", replacement: null },
-      {
-        entryId: "single-call",
-        action: "replace",
-        replacement: {
-          content: [
-            {
-              type: "toolCall",
-              id: "write-1",
-              name: "write",
-              arguments: { path: "/tmp/a.ts" },
-            },
-            { type: "text", text: "#23" },
-          ],
-        },
+    ]),
+  ).toEqual([
+    { entryId: "thinking-only", action: "omit", replacement: null },
+    {
+      entryId: "single-call",
+      action: "replace",
+      replacement: {
+        content: [
+          {
+            type: "toolCall",
+            id: "write-1",
+            name: "write",
+            arguments: { path: "/tmp/a.ts" },
+          },
+          { type: "text", text: "#23" },
+        ],
       },
-    ],);
+    },
+  ]);
 });
 test("没有裁剪内容时不编辑完整 tool call", () => {
-  expect(planContextEdits([
+  expect(
+    planContextEdits([
       live(
         "full-read",
         {
@@ -371,7 +387,8 @@ test("没有裁剪内容时不编辑完整 tool call", () => {
         },
         29,
       ),
-    ])).toEqual([{ entryId: "full-read", action: "keep" }],);
+    ]),
+  ).toEqual([{ entryId: "full-read", action: "keep" }]);
 });
 test("在新的 compaction 边界中保留模型可见的自定义消息", () => {
   const branch: BranchEntryLike[] = [
@@ -387,7 +404,10 @@ test("在新的 compaction 边界中保留模型可见的自定义消息", () =>
   const liveMessages = selectLiveMessages(branch);
   const plan = planContextEdits(liveMessages);
 
-  expect(liveMessages.map(({ entryId }) => entryId)).toEqual(["custom", "next"]);
+  expect(liveMessages.map(({ entryId }) => entryId)).toEqual([
+    "custom",
+    "next",
+  ]);
   expect(plan.map(({ action }) => action)).toEqual(["keep", "keep"]);
   expect(contextEditCompactionBoundary(branch, plan)).toBe("custom");
 });

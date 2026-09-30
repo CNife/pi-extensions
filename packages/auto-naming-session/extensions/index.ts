@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
-import type { Model, TextContent } from "@earendil-works/pi-ai";
+import type { Api, Model, TextContent } from "@earendil-works/pi-ai";
 import {
   type ExtensionAPI,
   type ExtensionContext,
@@ -234,7 +234,7 @@ async function generateTitle(
   transcript: string,
 ): Promise<string | null> {
   // 配置模型缺失、模型不可用或凭据无效时，静默回退到会话主模型。
-  let requestedModel: Model<any> | undefined;
+  let requestedModel: Model<Api> | undefined;
   if (config.model) {
     const parsed = parseModelRef(config.model);
     if (parsed) {
@@ -262,7 +262,7 @@ async function generateTitle(
   };
 
   const completeTitle = async (
-    candidate: Model<any>,
+    candidate: Model<Api>,
   ): Promise<string | null> => {
     try {
       if (!ctx.modelRegistry.hasConfiguredAuth(candidate)) return null;
