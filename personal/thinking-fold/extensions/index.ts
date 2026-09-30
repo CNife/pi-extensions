@@ -17,6 +17,7 @@ import {
 
 const STREAM_STATUS_KEY = "thinking-fold-stream";
 const ITEM_TIMER_INTERVAL_MS = 1000;
+const RENDER_BRIDGE_WIDGET = "thinking-fold-render-bridge";
 
 export function endsThinkingPhase(
   type: AssistantMessageEvent["type"],
@@ -71,6 +72,7 @@ export default function (pi: ExtensionAPI) {
   let sawThinkingInCurrentMessage = false;
   let thinkingCompleted = false;
   let patchError: string | undefined;
+  let requestRender: (() => void) | undefined;
 
   try {
     patch = installThinkingFoldPatch({});
@@ -106,6 +108,9 @@ export default function (pi: ExtensionAPI) {
     if (elapsedSecond === lastItemTimerSecond) return;
     lastItemTimerSecond = elapsedSecond;
     patch.tick(now);
+    // Timer-driven label changes mutate components without any terminal
+    // input, so nothing else schedules the TUI render they need.
+    requestRender?.();
   };
 
   const startItemTimer = (ctx: ExtensionContext) => {
@@ -138,12 +143,31 @@ export default function (pi: ExtensionAPI) {
     patch.updateOptions({ toggleKey });
     restoreTimings(ctx, patch);
 
+    // Terminal input consumed by an extension does not schedule a TUI render.
+    // Capture Pi's live TUI through a zero-row widget factory without
+    // replacing another extension's editor/footer or adding visible UI.
+    ctx.ui.setWidget(
+      RENDER_BRIDGE_WIDGET,
+      (tui) => {
+        requestRender = () => tui.requestRender();
+        return {
+          render: () => [],
+          invalidate() {},
+          dispose() {
+            requestRender = undefined;
+          },
+        };
+      },
+      { placement: "belowEditor" },
+    );
+
     removeInputListener?.();
     removeInputListener = ctx.ui.onTerminalInput((data) => {
       if (!patch || !getKeybindings().matches(data, "app.thinking.toggle"))
         return;
 
       patch.toggle();
+      requestRender?.();
       return { consume: true };
     });
   });
@@ -244,5 +268,10 @@ export default function (pi: ExtensionAPI) {
     }
     patch?.dispose();
     patch = undefined;
+    if (requestRender) {
+      requestRender();
+      ctx.ui.setWidget(RENDER_BRIDGE_WIDGET, undefined);
+    }
+    requestRender = undefined;
   });
 }
