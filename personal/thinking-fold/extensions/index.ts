@@ -140,7 +140,7 @@ export default function (pi: ExtensionAPI) {
     if (!patch || ctx.mode !== "tui") return;
 
     const toggleKey = keyText("app.thinking.toggle") || "ctrl+t";
-    patch.updateOptions({ toggleKey });
+    patch.updateOptions({ getTheme: () => ctx.ui.theme, toggleKey });
     restoreTimings(ctx, patch);
 
     // Terminal input consumed by an extension does not schedule a TUI render.
