@@ -14,8 +14,8 @@
  * 纯函数，无副作用，可独立测试。
  */
 
+import type { ContextEditEntry } from "@earendil-works/pi-coding-agent";
 import { extractText } from "./content.ts";
-
 // ============================================================================
 // Types
 // ============================================================================
@@ -253,6 +253,189 @@ export function pruneMessages(
   }
 
   return entries;
+}
+
+/** One active branch entry that can be edited in the model context. */
+export interface LiveMessage {
+  entryId: string;
+  message: MessageLike;
+  lineNumber?: number;
+}
+
+/** Minimal branch-entry shape needed to follow legacy compaction boundaries. */
+export interface BranchEntryLike {
+  type: string;
+  id: string;
+  message?: unknown;
+  firstKeptEntryId?: string | null;
+  summary?: string;
+}
+
+export type ContextEditDecision =
+  | { entryId: string; action: "keep" }
+  | { entryId: string; action: "omit"; replacement: null }
+  | {
+      entryId: string;
+      action: "replace";
+      replacement: NonNullable<ContextEditEntry["replacement"]>;
+    };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function prunedToolArgs(
+  toolName: string,
+  args: Record<string, unknown>,
+): Record<string, unknown> {
+  const dropKeys = PRUNE_ARGS_KEYS[toolName];
+  if (!dropKeys || !dropKeys.some((key) => key in args)) return args;
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(args)) {
+    if (!dropKeys.includes(key)) result[key] = value;
+  }
+  return result;
+}
+
+function planAssistantEdit(live: LiveMessage): ContextEditDecision {
+  const { entryId, message, lineNumber } = live;
+  if (!Array.isArray(message.content)) return { entryId, action: "keep" };
+
+  const content = message.content as unknown[];
+  let toolCallCount = 0;
+  for (const part of content) {
+    if (isRecord(part) && part.type === "toolCall") toolCallCount++;
+  }
+
+  const plannedContent: unknown[] = [];
+  let toolCallIndex = 0;
+  let changed = false;
+  for (const part of content) {
+    if (!isRecord(part)) {
+      plannedContent.push(part);
+      continue;
+    }
+    if (part.type === "thinking") {
+      changed = true;
+      continue;
+    }
+    if (part.type !== "toolCall") {
+      plannedContent.push(part);
+      continue;
+    }
+
+    toolCallIndex++;
+    const toolName = typeof part.name === "string" ? part.name : "?";
+    const args = isRecord(part.arguments) ? part.arguments : {};
+    const trimmedArgs = prunedToolArgs(toolName, args);
+    if (trimmedArgs !== args) {
+      plannedContent.push({ ...part, arguments: trimmedArgs });
+      changed = true;
+    } else {
+      plannedContent.push(part);
+    }
+
+    const anchor = buildAnchor(lineNumber, toolCallIndex, toolCallCount);
+    if (anchor) {
+      // The original call remains available to recall by JSONL row and call index.
+      plannedContent.push({ type: "text", text: anchor });
+      changed = true;
+    }
+  }
+
+  if (!changed) return { entryId, action: "keep" };
+  if (plannedContent.length === 0) {
+    return { entryId, action: "omit", replacement: null };
+  }
+  return {
+    entryId,
+    action: "replace",
+    replacement: {
+      content: plannedContent as NonNullable<
+        ContextEditEntry["replacement"]
+      >["content"],
+    },
+  };
+}
+
+/**
+ * Build a per-entry Plan C edit plan. Bash execution entries stay untouched:
+ * pi's appendContextEdit API does not allow editing that message role.
+ */
+export function planContextEdits(
+  liveMessages: readonly LiveMessage[],
+): ContextEditDecision[] {
+  const plan: ContextEditDecision[] = [];
+  for (const live of liveMessages) {
+    const { entryId, message } = live;
+    if (message.role === "assistant") {
+      plan.push(planAssistantEdit(live));
+      continue;
+    }
+    if (message.role === "toolResult") {
+      const toolName = message.toolName || "?";
+      const isError = message.isError ?? false;
+      if (shouldKeepToolResult(toolName, isError)) {
+        plan.push({ entryId, action: "keep" });
+      } else {
+        plan.push({ entryId, action: "omit", replacement: null });
+      }
+      continue;
+    }
+    // user text, custom messages, and unsupported roles remain unchanged.
+    plan.push({ entryId, action: "keep" });
+  }
+  return plan;
+}
+
+/**
+ * Select messages covered by the latest compaction boundary. Legacy compact-all
+ * and orphaned boundaries recover from entries after that compaction; a valid
+ * firstKeptEntryId retains its suffix. Compaction summaries are never edited.
+ */
+export function selectLiveMessages(
+  branchEntries: readonly BranchEntryLike[],
+): LiveMessage[] {
+  let compactionIndex = -1;
+  let firstKeptEntryId: string | null | undefined;
+  for (let i = branchEntries.length - 1; i >= 0; i--) {
+    if (branchEntries[i].type === "compaction") {
+      compactionIndex = i;
+      firstKeptEntryId = branchEntries[i].firstKeptEntryId;
+      break;
+    }
+  }
+
+  const startIndex =
+    compactionIndex < 0
+      ? 0
+      : firstKeptEntryId &&
+          branchEntries.some((entry) => entry.id === firstKeptEntryId)
+        ? branchEntries.findIndex((entry) => entry.id === firstKeptEntryId)
+        : compactionIndex + 1;
+  const liveMessages: LiveMessage[] = [];
+  for (let i = startIndex; i < branchEntries.length; i++) {
+    const entry = branchEntries[i];
+    if (entry.type !== "message" || !isRecord(entry.message)) continue;
+    if (typeof entry.message.role !== "string") continue;
+    liveMessages.push({
+      entryId: entry.id,
+      message: entry.message as MessageLike,
+    });
+  }
+  return liveMessages;
+}
+
+/** Use the previous compaction itself as a stable handoff when one exists. */
+export function contextEditCompactionBoundary(
+  branchEntries: readonly BranchEntryLike[],
+  plan: readonly ContextEditDecision[],
+): string | null {
+  for (let i = branchEntries.length - 1; i >= 0; i--) {
+    const entry = branchEntries[i];
+    if (entry.type === "compaction") return entry.id || null;
+  }
+  return plan.find((decision) => decision.action !== "omit")?.entryId ?? null;
 }
 
 /**
