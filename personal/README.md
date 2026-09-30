@@ -17,7 +17,7 @@ git 包不 pin ref 时，`pi update --extensions` 会拉取 main 最新。这是
 
 ### 依赖
 
-pi 安装 git 包时只在克隆根跑一次 `npm install`，npm 只认根依赖与 workspaces。因此唯一的真实运行时依赖 `@juicesharp/rpiv-advisor`（`advisor-adapter` 用）声明在**根** `package.json` 的 `dependencies`，落在克隆根 `node_modules`；`advisor-adapter` 的 deep-import 沿目录向上解析到根 `node_modules`。`@earendil-works/*` 仍全部走 peerDependencies（pi 运行时提供）。
+pi 安装 git 包时只在克隆根跑一次 `npm install`，npm 只认根依赖与 workspaces。根 `package.json` 当前没有 personal 运行时依赖；`@earendil-works/*` 全部走 peerDependencies（pi 运行时提供）。
 
 `personal/*/package.json` 保留各自的 `pi` manifest，仅供本地 `pi -e personal/<pkg>` 隔离开发用；git 包模式下只有根 manifest 生效，无嵌套发现。`personal/*/node_modules` 由本地 `npm install` 维护（已 gitignore）；`personal/*/package-lock.json` 进仓以固定传递依赖。
 
@@ -49,7 +49,6 @@ pi --no-extensions -e personal/<pkg>
 | `exit.ts` | 文件 | 输入 `exit` 退出会话（自 miscs） |
 | `debug-request-body.ts` | 文件 | `PI_DEBUG_REQUEST_BODY` 门闩下写请求体（自 miscs） |
 | `stash-input.ts` | 文件 | alt+s 暂存/恢复输入框文本：有内容时暂存并清空（已有暂存时需双击确认覆盖），空时恢复 |
-| `advisor-adapter/` | 包 | 代理 `@juicesharp/rpiv-advisor`：流式 thinking/正文 + 自定义 header/footer 渲染 |
 | `nmem-lite/` | 包 | nmem 会话自动同步 + 精简引导；召回/保存走官方 `nmem` CLI + 技能（替代 `npm:@cnife/pi-nmem`） |
 | `thinking-fold/` | 包 | 推理块尾部预览 + 完成折叠 + Ctrl+T 展开（trace-only，基于 `@99percentpeople/pi-thinking-fold` 简化重写，替代 `npm:@99percentpeople/pi-thinking-fold`） |
 | `skills/` | 技能组 | 5 个 pi-agent 技能（2026-08-02 自 CNife/skills 迁入，随包多机分发）：`pi-trending` / `search-pi-extensions` / `add-provider-models-to-pi` / `pi-session-query` / `herdr-subagent`。**结构约束**：`personal/skills/` 下只允许一层技能目录（每目录含 `SKILL.md`），禁止放松散文件——根 manifest glob `personal/skills/*` 会把任何直接子项当技能加载 |
@@ -63,9 +62,3 @@ pi --no-extensions -e personal/<pkg>
 - `herdr-agent-state.ts` / herdr 生成物
 - `subagent/` 残留配置（无入口）
 - 密钥、会话数据
-
-## 顾问小包
-
-- 不要在 settings 里挂 `npm:@juicesharp/rpiv-advisor`；它只是根包的运行时依赖（根 `package.json` `dependencies`），原 factory 当库调用。
-- **脆点**：适配器 deep-import 上游内部模块（`@juicesharp/rpiv-advisor/advisor/*`）。上游对这些路径**无兼容承诺**；上游大改时需跟进本包。
-- **备选偏离**：若 advisor 深路径 import 无法解析到根 node_modules，把 `advisor-adapter` 摊平为 `personal/` 下单文件扩展。

@@ -19,3 +19,4 @@
 `sh-guard.ts` 为早期归档的单文件扩展。
 `agent_template/` 于 2026-08-01 归档（原 personal/ 包型扩展，停止同步加载）。
 `fabric-best-practices/` 于 2026-08-02 归档（原 personal/skills/ 技能，停止随包加载）。
+`advisor-adapter/` 于 2026-09-30 归档（原 personal/ 包型扩展，代理 `@juicesharp/rpiv-advisor` 提供流式渲染；根包随之移除该运行时依赖，需要 advisor 时直接安装 `npm:@juicesharp/rpiv-advisor`）。决策见 [ADR 0004](../docs/adr/0004-retire-advisor-adapter.md)。
