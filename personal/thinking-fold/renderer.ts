@@ -3,11 +3,7 @@ import {
   AssistantMessageComponent,
   type Theme,
 } from "@earendil-works/pi-coding-agent";
-import {
-  type Component,
-  Markdown,
-  Text,
-} from "@earendil-works/pi-tui";
+import { type Component, Markdown, Text } from "@earendil-works/pi-tui";
 
 export interface ThinkingFoldOptions {
   getTheme?: () => Theme;
@@ -54,9 +50,10 @@ interface AssistantMessageInternals {
 // MouseRegion or its event types.
 interface ThinkingMouseRegion extends Component {
   child: Component;
-  handleMouse(event: { type: string; button?: string }):
-    | { handled: true }
-    | undefined;
+  handleMouse(event: {
+    type: string;
+    button?: string;
+  }): { handled: true } | undefined;
 }
 
 function getThinkingMouseRegion(
@@ -248,10 +245,11 @@ class RenderedThinkingSection implements Component {
     if (!this.label) return contentLines;
 
     const labelText = this.context.labelFor(this.context.canExpand);
-    const styledLabelText = this.context.getTheme?.().style(labelText, {
-      fg: "thinkingText",
-      italic: true,
-    }) ?? labelText;
+    const styledLabelText =
+      this.context.getTheme?.().style(labelText, {
+        fg: "thinkingText",
+        italic: true,
+      }) ?? labelText;
     if (styledLabelText !== this.labelText) {
       this.label.setText(styledLabelText);
       this.labelText = styledLabelText;
@@ -481,7 +479,8 @@ function rebuild(
     }
   } finally {
     internals.hideThinkingBlock = nativeHidden;
-    if (nativeOverrides) internals.thinkingVisibilityOverrides = nativeOverrides;
+    if (nativeOverrides)
+      internals.thinkingVisibilityOverrides = nativeOverrides;
     // Native left click toggles per-run visibility, which fights the folded
     // representation. Rebind it to the same persistent toggle as Ctrl+T.
     for (const child of internals.contentContainer?.children ?? []) {
