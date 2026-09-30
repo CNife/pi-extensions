@@ -3,7 +3,6 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import type { Model, TextContent } from "@earendil-works/pi-ai";
-import { completeSimple } from "@earendil-works/pi-ai";
 import {
   type ExtensionAPI,
   type ExtensionContext,
@@ -233,83 +232,66 @@ async function generateTitle(
   ctx: ExtensionContext,
   config: AutoNamingConfig,
   transcript: string,
-  notifyErrors: boolean,
 ): Promise<string | null> {
-  // 解析模型
-  let model: Model<any> | undefined;
+  // 配置模型缺失、模型不可用或凭据无效时，静默回退到会话主模型。
+  let requestedModel: Model<any> | undefined;
   if (config.model) {
     const parsed = parseModelRef(config.model);
-    if (!parsed) {
-      if (notifyErrors) {
-        ctx.ui.notify(
-          `Invalid model "${config.model}". Use "provider/modelId"`,
-          "warning",
-        );
-      }
-      return null;
+    if (parsed) {
+      requestedModel = ctx.modelRegistry.find(parsed.provider, parsed.id);
     }
-    model = ctx.modelRegistry.find(parsed.provider, parsed.id);
-    if (!model) {
-      if (notifyErrors) {
-        ctx.ui.notify(`Model "${config.model}" not found`, "warning");
-      }
-      return null;
-    }
-  } else {
-    model = ctx.model;
-    if (!model) return null;
   }
+  const model = requestedModel ?? ctx.model;
+  if (!model) return null;
 
-  // 获取认证
-  const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
-  if (!auth.ok) {
-    if (notifyErrors) {
-      ctx.ui.notify(`Auth failed: ${auth.error}`, "warning");
-    }
-    return null;
-  }
+  const fallbackModel =
+    requestedModel &&
+    ctx.model &&
+    (ctx.model.provider !== requestedModel.provider ||
+      ctx.model.id !== requestedModel.id)
+      ? ctx.model
+      : undefined;
 
-  // 调用 LLM
   const userMessage = `Conversation:\n\n${transcript}\n\nSynthesize the full scope of this conversation into a concise title in ${config.language}.`;
   const systemPrompt = `You are a session titling assistant. Generate a concise, descriptive title (max 60 chars) for the following conversation in ${config.language}. Consider the overall conversation arc, key topics, and primary goals rather than focusing on the most recent messages. Output ONLY the title, no quotes, no explanation.`;
+  const context = {
+    systemPrompt,
+    messages: [
+      { role: "user" as const, content: userMessage, timestamp: Date.now() },
+    ],
+  };
 
-  const response = await completeSimple(
-    model,
-    {
-      systemPrompt,
-      messages: [{ role: "user", content: userMessage, timestamp: Date.now() }],
-    },
-    {
-      apiKey: auth.apiKey,
-      headers: auth.headers,
-      maxTokens: 60,
-    },
-  );
+  const completeTitle = async (
+    candidate: Model<any>,
+  ): Promise<string | null> => {
+    try {
+      if (!ctx.modelRegistry.hasConfiguredAuth(candidate)) return null;
+      const response = await ctx.modelRegistry.complete(candidate, context, {
+        maxTokens: 60,
+      });
+      if (
+        response.stopReason === "error" ||
+        response.stopReason === "aborted"
+      ) {
+        return null;
+      }
 
-  if (response.stopReason === "error" || response.stopReason === "aborted") {
-    ctx.ui.notify(
-      `Title gen failed: ${response.errorMessage ?? response.stopReason}`,
-      "warning",
-    );
-    return null;
-  }
-
-  // 提取标题
-  const title = response.content
-    .filter((c): c is TextContent & { type: "text" } => c.type === "text")
-    .map((c) => c.text)
-    .join("")
-    .trim()
-    .slice(0, 60);
-
-  if (!title) {
-    if (notifyErrors) {
-      ctx.ui.notify("Generated empty title, skipping", "warning");
+      const title = response.content
+        .filter((c): c is TextContent & { type: "text" } => c.type === "text")
+        .map((c) => c.text)
+        .join("")
+        .trim()
+        .slice(0, 60);
+      return title || null;
+    } catch {
+      return null;
     }
-    return null;
-  }
+  };
 
-  return title;
+  return (
+    (await completeTitle(model)) ??
+    (fallbackModel ? completeTitle(fallbackModel) : null)
+  );
 }
 
 function applyTitle(
@@ -382,7 +364,7 @@ export default function (pi: ExtensionAPI) {
       const transcript = buildFullTranscript(branch);
       if (!transcript) return;
 
-      const title = await generateTitle(ctx, config, transcript, true);
+      const title = await generateTitle(ctx, config, transcript);
       if (title) {
         applyTitle(pi, state, title);
         void syncTitleIfChanged(pi);
@@ -416,7 +398,7 @@ export default function (pi: ExtensionAPI) {
       );
       if (!transcript) return;
 
-      const title = await generateTitle(ctx, config, transcript, false);
+      const title = await generateTitle(ctx, config, transcript);
       if (title) {
         applyTitle(pi, state, title);
         void syncTitleIfChanged(pi);

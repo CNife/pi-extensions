@@ -41,8 +41,8 @@ export default function (pi: ExtensionAPI) {
 | `pi.appendEntry(type, data)` | Persistent metadata | CustomEntry, NOT visible to LLM |
 | `ctx.sessionManager.getBranch()` | Walk session tree | Root → leaf, all entry types |
 | `ctx.modelRegistry.find(provider, id)` | Resolve model | Returns Model<Api> or undefined |
-| `ctx.modelRegistry.getApiKeyAndHeaders(model)` | Get auth | Must check `auth.ok` before use |
-| `completeSimple(model, context, opts)` | LLM call | From @earendil-works/pi-ai, never throws, check stopReason |
+| `ctx.modelRegistry.hasConfiguredAuth(model)` | Check provider auth | Never read or inject credentials manually |
+| `ctx.modelRegistry.complete(model, context, opts)` | LLM completion | ModelRuntime-backed provider auth resolves stored/OAuth/runtime credentials; check stopReason |
 
 ## Dependency Pattern
 
