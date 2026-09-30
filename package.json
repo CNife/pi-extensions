@@ -48,9 +48,6 @@
     "typescript": "^5.9.0",
     "vitest": "^4.1.10"
   },
-  "dependencies": {
-    "@juicesharp/rpiv-advisor": "^2.1.0"
-  },
   "type": "module",
   "engines": {
     "node": ">=22"
