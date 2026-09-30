@@ -49,4 +49,6 @@ pi update --extensions
 
 ## 兼容性
 
+针对 pi 0.99.1 适配：`updateContent` 现签名 `(message, isStreaming = this.isStreaming)`，patch 透传第二参数；thinking `Markdown` 现被包在 `MouseRegion` 内，替换穿透 region 进行，原生左键点击改绑为与 Ctrl+T 一致的展开切换；shutdown 时重放原生渲染以恢复现场。
+
 只 monkey-patch `AssistantMessageComponent.updateContent`（不再 hook `render`）。marker 仅存在于显示副本，不改 session 源消息 / 持久化 / 模型上下文。若 Pi 改动组件公开 API，扩展启动时自禁用并告警；若仅改动内部子组件布局（找不到 marker），受影响消息安全回退到完整原生渲染，不泄漏标记。
