@@ -38,6 +38,18 @@ const DEFAULT_API_URL = "http://127.0.0.1:14242";
 const CONFIG_PATH = `${homedir()}/.nowledge-mem/config.json`;
 
 type JsonObject = Record<string, unknown>;
+type SessionEntry = ReturnType<
+  ExtensionContext["sessionManager"]["getBranch"]
+>[number];
+
+interface MessageLike {
+  role: unknown;
+  command?: unknown;
+  output?: unknown;
+  exitCode?: unknown;
+  summary?: unknown;
+  content?: unknown;
+}
 
 interface NmemConfig {
   apiUrl: string;
@@ -284,14 +296,6 @@ interface SyncPayload {
   body: JsonObject;
 }
 
-interface SessionManagerLike {
-  getBranch?: () => JsonObject[];
-  getEntries?: () => JsonObject[];
-  getSessionId?: () => string;
-  getSessionFile?: () => string | undefined;
-  getSessionName?: () => string | undefined;
-  getCwd?: () => string;
-}
 
 // --- Module state ---
 
@@ -336,7 +340,7 @@ function contentToText(content: unknown): string {
   return "";
 }
 
-function messageToText(message: JsonObject): string {
+function messageToText(message: MessageLike): string {
   const role = stringValue(message.role);
   if (role === "bashExecution") {
     const command = stringValue(message.command) || "";
@@ -373,7 +377,7 @@ function normalizeRole(
 }
 
 function buildEntryMetadata(
-  entry: JsonObject,
+  entry: SessionEntry,
   index: number,
   ambient: JsonObject,
 ): JsonObject {
@@ -386,18 +390,17 @@ function buildEntryMetadata(
 }
 
 function entryToMessage(
-  entry: JsonObject,
+  entry: SessionEntry,
   index: number,
   ambient: JsonObject,
 ): ThreadMessage | undefined {
   if (entry.type === "message") {
     const message = entry.message;
     if (!message || typeof message !== "object") return undefined;
-    const msg = message as JsonObject;
-    if (msg.role === "custom") return undefined;
-    const role = normalizeRole(msg.role);
+    if (message.role === "custom") return undefined;
+    const role = normalizeRole(message.role);
     if (!role) return undefined;
-    const content = truncate(messageToText(msg).trim());
+    const content = truncate(messageToText(message).trim());
     if (!content) return undefined;
     return {
       role,
@@ -405,7 +408,7 @@ function entryToMessage(
       timestamp: stringValue(entry.timestamp),
       metadata: {
         ...buildEntryMetadata(entry, index, ambient),
-        pi_message_role: stringValue(msg.role),
+        pi_message_role: stringValue(message.role),
       },
     };
   }
@@ -448,21 +451,16 @@ function entryToMessage(
 
 function buildMessages(ctx: ExtensionContext): ThreadMessage[] {
   const ambient: JsonObject = { source_app: sourceApp() };
-  const manager = ctx.sessionManager as unknown as SessionManagerLike;
-  const entries =
-    typeof manager.getBranch === "function"
-      ? manager.getBranch()
-      : manager.getEntries?.() || [];
+  const entries = ctx.sessionManager.getBranch();
   return entries
     .map((entry, index) => entryToMessage(entry, index, ambient))
     .filter((msg): msg is ThreadMessage => !!msg);
 }
 
 function sessionId(ctx: ExtensionContext): string {
-  const manager = ctx.sessionManager as unknown as SessionManagerLike;
-  const id = manager.getSessionId?.();
+  const id = ctx.sessionManager.getSessionId();
   if (id) return id;
-  const file = manager.getSessionFile?.();
+  const file = ctx.sessionManager.getSessionFile();
   if (file) return basename(file).replace(/\.jsonl$/i, "");
   return "unknown";
 }
@@ -474,12 +472,11 @@ function threadIdFor(ctx: ExtensionContext): string {
 }
 
 function buildTitle(ctx: ExtensionContext, messages: ThreadMessage[]): string {
-  const manager = ctx.sessionManager as unknown as SessionManagerLike;
-  const name = manager.getSessionName?.()?.trim();
+  const name = ctx.sessionManager.getSessionName()?.trim();
   if (name) return name;
   const firstUser = messages.find((msg) => msg.role === "user")?.content.trim();
   if (firstUser) return firstUser.slice(0, 120);
-  const cwd = manager.getCwd?.();
+  const cwd = ctx.sessionManager.getCwd();
   return cwd
     ? `${hostLabel()} session - ${basename(cwd)}`
     : `${hostLabel()} session`;
@@ -548,17 +545,16 @@ function buildSyncPayload(
 
   const threadId = threadIdFor(ctx);
   const id = sessionId(ctx);
-  const manager = ctx.sessionManager as unknown as SessionManagerLike;
   const body: JsonObject = {
     thread_id: threadId,
     title: buildTitle(ctx, messages),
     messages,
     source: sourceApp(),
-    project: manager.getCwd?.(),
+    project: ctx.sessionManager.getCwd(),
     tool_version: pluginVersion(),
     metadata: {
       pi_session_id: id,
-      pi_session_file: manager.getSessionFile?.(),
+      pi_session_file: ctx.sessionManager.getSessionFile(),
       sync_reason: reason,
     },
   };
