@@ -14,8 +14,8 @@ import type {
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
 import {
-  contextEditCompactionBoundary,
   type ContextEditDecision,
+  contextEditCompactionBoundary,
   type LiveMessage,
   planContextEdits,
   selectLiveMessages,
@@ -111,10 +111,10 @@ export default function (pi: ExtensionAPI) {
         if (editCount === 0) {
           ctx.ui.notify("Nothing to prune", "warning");
         } else {
-          ctx.ui.notify("Pruned " + editCount + " context entries", "info");
+          ctx.ui.notify(`Pruned ${editCount} context entries`, "info");
         }
       } catch (error) {
-        ctx.ui.notify("Prune failed: " + errorMessage(error), "error");
+        ctx.ui.notify(`Prune failed: ${errorMessage(error)}`, "error");
       }
     },
   });

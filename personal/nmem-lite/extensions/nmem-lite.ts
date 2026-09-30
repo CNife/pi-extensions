@@ -296,7 +296,6 @@ interface SyncPayload {
   body: JsonObject;
 }
 
-
 // --- Module state ---
 
 const syncStates = new Map<string, SyncState>();

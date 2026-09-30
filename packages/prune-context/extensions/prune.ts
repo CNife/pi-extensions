@@ -99,8 +99,8 @@ function buildAnchor(
   totalToolCalls: number,
 ): string {
   if (lineNumber === undefined || lineNumber < 1) return "";
-  if (totalToolCalls === 1 && toolCallIndex === 1) return "#" + lineNumber;
-  return "#" + lineNumber + "." + toolCallIndex;
+  if (totalToolCalls === 1 && toolCallIndex === 1) return `#${lineNumber}`;
+  return `#${lineNumber}.${toolCallIndex}`;
 }
 
 function pruneToolArgs(
@@ -108,7 +108,7 @@ function pruneToolArgs(
   args: Record<string, unknown>,
 ): Record<string, unknown> {
   const dropKeys = PRUNE_ARGS_KEYS[toolName];
-  if (!dropKeys || !dropKeys.some((key) => key in args)) return args;
+  if (!dropKeys?.some((key) => key in args)) return args;
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(args)) {
     if (!dropKeys.includes(key)) result[key] = value;
@@ -224,13 +224,13 @@ export function planContextEdits(
 }
 
 /** Find the latest compaction and resolve its first-kept id if it exists. */
-function latestCompactionBoundary(
-  branchEntries: readonly BranchEntryLike[],
-): {
-  compactionIndex: number;
-  firstKeptEntryId: string | null | undefined;
-  firstKeptEntryIndex: number;
-} | undefined {
+function latestCompactionBoundary(branchEntries: readonly BranchEntryLike[]):
+  | {
+      compactionIndex: number;
+      firstKeptEntryId: string | null | undefined;
+      firstKeptEntryIndex: number;
+    }
+  | undefined {
   for (let i = branchEntries.length - 1; i >= 0; i--) {
     const entry = branchEntries[i];
     if (entry.type !== "compaction") continue;
@@ -239,7 +239,9 @@ function latestCompactionBoundary(
       compactionIndex: i,
       firstKeptEntryId,
       firstKeptEntryIndex: firstKeptEntryId
-        ? branchEntries.findIndex((candidate) => candidate.id === firstKeptEntryId)
+        ? branchEntries.findIndex(
+            (candidate) => candidate.id === firstKeptEntryId,
+          )
         : -1,
     };
   }
@@ -307,7 +309,10 @@ export function contextEditCompactionBoundary(
   const plannedByEntryId = new Map(
     plan.map((decision) => [decision.entryId, decision] as const),
   );
-  const replacementByTargetId = new Map<string, ContextEditEntry["replacement"]>();
+  const replacementByTargetId = new Map<
+    string,
+    ContextEditEntry["replacement"]
+  >();
   for (const entry of branchEntries) {
     if (entry.type === "context_edit") {
       replacementByTargetId.set(entry.targetId, entry.replacement);
