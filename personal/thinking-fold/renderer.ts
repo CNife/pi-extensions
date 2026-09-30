@@ -1,14 +1,16 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { AssistantMessageComponent } from "@earendil-works/pi-coding-agent";
+import {
+  AssistantMessageComponent,
+  type Theme,
+} from "@earendil-works/pi-coding-agent";
 import {
   type Component,
-  type DefaultTextStyle,
   Markdown,
-  type MarkdownOptions,
-  type MarkdownTheme,
+  Text,
 } from "@earendil-works/pi-tui";
 
 export interface ThinkingFoldOptions {
+  getTheme?: () => Theme;
   previewLines: number;
   toggleKey: string;
 }
@@ -72,10 +74,6 @@ function getThinkingMouseRegion(
 interface MarkdownInternals {
   text?: string;
   paddingX?: number;
-  paddingY?: number;
-  defaultTextStyle?: DefaultTextStyle;
-  theme?: MarkdownTheme;
-  options?: MarkdownOptions;
 }
 
 interface PatchRecord {
@@ -125,6 +123,7 @@ function normalizedOptions(
   const previewLines =
     options.previewLines ?? DEFAULT_THINKING_FOLD_OPTIONS.previewLines;
   return {
+    getTheme: options.getTheme,
     previewLines:
       Number.isInteger(previewLines) && previewLines > 0
         ? previewLines
@@ -192,6 +191,7 @@ class RenderedThinkingContext {
     readonly previewLines: number,
     readonly collapseCanExpand: boolean,
     readonly labelFor: (canExpand: boolean) => string,
+    readonly getTheme: (() => Theme) | undefined,
   ) {}
 
   add(section: RenderedThinkingSection): void {
@@ -223,7 +223,7 @@ class RenderedThinkingSection implements Component {
 
   constructor(
     private readonly content: Markdown,
-    private readonly label: Markdown | undefined,
+    private readonly label: Text | undefined,
     private readonly context: RenderedThinkingContext,
   ) {
     context.add(this);
@@ -248,9 +248,13 @@ class RenderedThinkingSection implements Component {
     if (!this.label) return contentLines;
 
     const labelText = this.context.labelFor(this.context.canExpand);
-    if (labelText !== this.labelText) {
-      this.label.setText(labelText);
-      this.labelText = labelText;
+    const styledLabelText = this.context.getTheme?.().style(labelText, {
+      fg: "thinkingText",
+      italic: true,
+    }) ?? labelText;
+    if (styledLabelText !== this.labelText) {
+      this.label.setText(styledLabelText);
+      this.labelText = styledLabelText;
     }
     return [...this.label.render(width), ...contentLines];
   }
@@ -337,33 +341,9 @@ function getMarkdownInternals(
   if (!(component instanceof Markdown)) return undefined;
   const internals = component as unknown as MarkdownInternals;
   return typeof internals.text === "string" &&
-    typeof internals.paddingX === "number" &&
-    typeof internals.paddingY === "number" &&
-    internals.theme
+    typeof internals.paddingX === "number"
     ? internals
     : undefined;
-}
-
-function cloneNativeMarkdown(
-  component: Component,
-  text: string,
-): Markdown | undefined {
-  const internals = getMarkdownInternals(component);
-  if (
-    !internals?.theme ||
-    internals.paddingX === undefined ||
-    internals.paddingY === undefined
-  ) {
-    return undefined;
-  }
-  return new Markdown(
-    text,
-    internals.paddingX,
-    internals.paddingY,
-    internals.theme,
-    internals.defaultTextStyle,
-    internals.options,
-  );
 }
 
 function replaceMarkedThinkingSections(
@@ -373,6 +353,7 @@ function replaceMarkedThinkingSections(
   previewLines: number,
   collapseCanExpand: boolean,
   labelFor: (canExpand: boolean) => string,
+  getTheme: (() => Theme) | undefined,
 ): boolean {
   const internals = component as unknown as AssistantMessageInternals;
   const children = internals.contentContainer?.children;
@@ -386,6 +367,7 @@ function replaceMarkedThinkingSections(
     previewLines,
     collapseCanExpand,
     labelFor,
+    getTheme,
   );
   for (let index = 0; index < children.length; index++) {
     const child = children[index];
@@ -396,14 +378,18 @@ function replaceMarkedThinkingSections(
     const nativeMarkdown = region?.child ?? child;
     const markdown = getMarkdownInternals(nativeMarkdown);
     const section = markdown?.text ? pending.get(markdown.text) : undefined;
-    if (!section) continue;
+    if (!section || !markdown || !(nativeMarkdown instanceof Markdown))
+      continue;
 
-    const content = cloneNativeMarkdown(nativeMarkdown, section.text);
+    nativeMarkdown.setText(section.text);
     const label = section.showLabel
-      ? cloneNativeMarkdown(nativeMarkdown, "")
+      ? new Text("", markdown.paddingX, 0)
       : undefined;
-    if (!content || (section.showLabel && !label)) return false;
-    const replacement = new RenderedThinkingSection(content, label, context);
+    const replacement = new RenderedThinkingSection(
+      nativeMarkdown,
+      label,
+      context,
+    );
     if (region) region.child = replacement;
     else children[index] = replacement;
     pending.delete(section.marker);
@@ -485,6 +471,7 @@ function rebuild(
       record.options.previewLines,
       hasThinkingContent,
       labelFor,
+      record.options.getTheme,
     );
     if (!replaced) {
       // Pi changed its internal child layout. Never leak markers or damage the
