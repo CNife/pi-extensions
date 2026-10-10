@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 修复在要求会话标识的 provider（如 opencode-go）下标题生成静默失败：`complete()` 调用补传 `sessionId`（pi 由此派生会话 header，缺失时请求以 400 MissingSessionID 失败），并把 `maxTokens` 从 60 提高以容纳推理模型的 thinking 输出；`stopReason="length"` 时不再写入被截断的标题。
 - 首标题生成兼容 custom 消息：当用户首条消息经 inline-skill-completion 等扩展展开为 custom 消息（`role: "custom"`）时，不再被 `message_end` 的 `role === "user"` 检查跳过。transcript 构建时剥离 custom 消息 content 中的 `<skill>...</skill>` 块，只保留用户正文用于生成标题。修复同时安装 auto-naming-session 与 inline-skill-completion 时，首条 `/skill:xxx` 消息不立即生成标题、直到下一条普通消息才生成的问题。
 
 ### Changed
