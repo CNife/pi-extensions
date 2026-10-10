@@ -30,12 +30,12 @@ GitHub Issues（`CNife/pi-extensions`），用 `gh` CLI。见 `docs/agents/issue
 
 ### Domain docs
 
-multi-context：根 `CONTEXT-MAP.md` 索引各 context 的 `CONTEXT.md`（通用 + nmem），系统级 ADR 在 `docs/adr/`。见 `docs/agents/domain.md`。
+*33|multi-context：根 `GLOSSARY-MAP.md` 索引各 context 的 `GLOSSARY.md`（通用 + nmem），系统级 ADR 在 `docs/adr/`。见 `docs/agents/domain.md`。
 
 ## 参考
 
-- [CONTEXT.md](CONTEXT.md) - 领域术语表
-- [CONTEXT-MAP.md](CONTEXT-MAP.md) - context 索引
+- [GLOSSARY.md](GLOSSARY.md) - 领域术语表
+- [GLOSSARY-MAP.md](GLOSSARY-MAP.md) - context 索引
 - [packages/AGENTS.md](packages/AGENTS.md) - 扩展开发规范
 - [personal/README.md](personal/README.md) - 个人扩展树与 git 包分发
 - [docs/troubleshooting.md](docs/troubleshooting.md) - 排查与本地测试
