@@ -56,4 +56,4 @@ MIT
 ---
 
 - 项目结构、目录约定见 [AGENTS.md](AGENTS.md)
-- 领域术语表见 [CONTEXT.md](CONTEXT.md)
+- 领域术语表见 [GLOSSARY.md](GLOSSARY.md)

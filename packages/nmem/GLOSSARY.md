@@ -1,6 +1,6 @@
 # nmem 扩展术语表
 
-本文件是 `@cnife/pi-nmem` 扩展的领域术语表，记录 nmem 集成相关概念。项目通用术语见根 [CONTEXT.md](../../CONTEXT.md)。
+本文件是 `@cnife/pi-nmem` 扩展的领域术语表，记录 nmem 集成相关概念。项目通用术语见根 [GLOSSARY.md](../../GLOSSARY.md)。
 
 ## nmem 集成
 
