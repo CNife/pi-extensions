@@ -4,6 +4,7 @@ import {
   type Theme,
 } from "@earendil-works/pi-coding-agent";
 import { type Component, Markdown, Text } from "@earendil-works/pi-tui";
+import { foldedHeight } from "./height-reserve.ts";
 
 export interface ThinkingFoldOptions {
   getTheme?: () => Theme;
@@ -37,6 +38,8 @@ interface ComponentState {
   fullMessage?: AssistantMessage;
   renderedMessage?: AssistantMessage;
   isStreaming?: boolean;
+  /** 已经折叠但还没把砍掉的高度上报出去（等这一帧渲染出真实行数）。 */
+  foldPending?: boolean;
 }
 
 interface AssistantMessageInternals {
@@ -87,6 +90,14 @@ interface PatchRecord {
   components: Set<WeakRef<AssistantMessageComponent>>;
   knownComponents: WeakSet<AssistantMessageComponent>;
   timings: Map<number, ThinkingTiming>;
+  hooks?: ThinkingFoldHooks;
+  /** 正在上报折叠的时间戳；只有这一次重建算「折叠那一帧」。 */
+  foldingTimestamp?: number;
+  /**
+   * 递增的代数。清债（收尾 / 展开 / transcript 重建）会 +1，
+   * 让已经挂起但还没渲染的那次上报作废。
+   */
+  foldGeneration: number;
   updateOptions(options: Partial<ThinkingFoldOptions>): void;
   setExpanded(expanded: boolean): void;
   setMessageTiming(timestamp: number, timing: ThinkingTiming): void;
@@ -95,6 +106,16 @@ interface PatchRecord {
   tick(now?: number): void;
   rerenderAll(): void;
   rerenderTimestamp(timestamp: number): void;
+  cancelPendingFolds(): void;
+}
+
+/**
+ * 折叠发生时的上报钩子。高度留白机制靠它知道自己该留多少行：
+ * 折叠砍掉的高度按**段**封顶后累加（见 height-reserve.ts 的 \`foldedHeight\`）。
+ */
+export interface ThinkingFoldHooks {
+  /** 本次折叠腾出的高度（各行按预览行数逐段封顶后累加）。 */
+  onFold?(freedLines: number): void;
 }
 
 export interface ThinkingFoldPatchHandle {
@@ -107,6 +128,8 @@ export interface ThinkingFoldPatchHandle {
   beginMessage(message: AssistantMessage, startedAt?: number): void;
   completeMessage(message: AssistantMessage, completedAt?: number): void;
   tick(now?: number): void;
+  /** 作废已挂起但还没渲染的折叠上报；清债时调用。 */
+  cancelPendingFolds(): void;
   dispose(): void;
 }
 
@@ -189,10 +212,29 @@ class RenderedThinkingContext {
     readonly collapseCanExpand: boolean,
     readonly labelFor: (canExpand: boolean) => string,
     readonly getTheme: (() => Theme) | undefined,
+    /**
+     * 折叠当前帧才携带：折叠砍掉的高度只有真正渲染过才知道（Markdown 换行依赖
+     * 终端宽度），所以在 prepare() 拿到宽度、行数落地之后才上报。
+     */
+    readonly onFold: ((freedLines: number) => void) | undefined,
   ) {}
 
   add(section: RenderedThinkingSection): void {
     this.sections.push(section);
+  }
+
+  /**
+   * 折叠后腾出的高度：各段分别按预览行数封顶再累加。
+   *
+   * 逐段封顶而非对总数封顶——流式预览是每段各自只显示尾部 `previewLines` 行，
+   * 一条消息里的多段推理各自折掉各自的高度。
+   */
+  get freedLineCount(): number {
+    return this.sections.reduce(
+      (total, section) =>
+        total + foldedHeight(this.previewLines, section.renderedLineCount),
+      0,
+    );
   }
 
   prepare(width: number): void {
@@ -205,6 +247,7 @@ class RenderedThinkingContext {
             (section) => section.renderedLineCount > this.previewLines,
           );
     this.preparedWidth = width;
+    if (this.behavior === "collapse") this.onFold?.(this.freedLineCount);
   }
 
   invalidate(): void {
@@ -291,7 +334,6 @@ function collectThinkingRuns(message: AssistantMessage): NativeThinkingRun[] {
 
 function createMarkedThinkingMessage(
   message: AssistantMessage,
-  behavior: EffectiveBehavior,
 ): MarkedThinkingMessage | undefined {
   const runs = collectThinkingRuns(message);
   const firstRun = runs[0];
@@ -319,16 +361,12 @@ function createMarkedThinkingMessage(
     sections.push({ marker, text: run.text, showLabel });
   };
 
-  if (behavior === "collapse") {
-    for (const run of runs) clearRun(run);
-    markRun(firstRun, 0, true);
-  } else {
-    // preview: mark every run; only the first carries the label.
-    for (const run of runs) clearRun(run);
-    runs.forEach((run, runIndex) => {
-      if (runIndex === 0 || run.text) markRun(run, runIndex, runIndex === 0);
-    });
-  }
+  // 每段推理都要保留成 section：折叠时高度债按「全部推理折掉的行数」计，
+  // 只留第一段会漏记其余段的高度，留白补不够，位移照旧发生。
+  for (const run of runs) clearRun(run);
+  runs.forEach((run, runIndex) => {
+    if (runIndex === 0 || run.text) markRun(run, runIndex, runIndex === 0);
+  });
 
   return { message: { ...message, content }, sections };
 }
@@ -352,6 +390,7 @@ function replaceMarkedThinkingSections(
   collapseCanExpand: boolean,
   labelFor: (canExpand: boolean) => string,
   getTheme: (() => Theme) | undefined,
+  onFold: ((freedLines: number) => void) | undefined,
 ): boolean {
   const internals = component as unknown as AssistantMessageInternals;
   const children = internals.contentContainer?.children;
@@ -366,6 +405,7 @@ function replaceMarkedThinkingSections(
     collapseCanExpand,
     labelFor,
     getTheme,
+    onFold,
   );
   for (let index = 0; index < children.length; index++) {
     const child = children[index];
@@ -440,7 +480,7 @@ function rebuild(
     const timing = record.timings.get(message.timestamp);
     const completed = timing?.completedAt !== undefined;
     const behavior: EffectiveBehavior = completed ? "collapse" : "preview";
-    const marked = createMarkedThinkingMessage(message, behavior);
+    const marked = createMarkedThinkingMessage(message);
     if (!marked) {
       state.renderedMessage = message;
       record.originalUpdate.call(component, message, state.isStreaming);
@@ -460,6 +500,20 @@ function rebuild(
             canExpand,
           );
 
+    // 置位而非赋值：折叠与渲染之间可能夹着多次重建（同一帧内的其它更新），
+    // 上报要一直挂到某次真实渲染把它消费掉为止。
+    if (record.foldingTimestamp === message.timestamp) state.foldPending = true;
+    const generation = record.foldGeneration;
+    const onFold = state.foldPending
+      ? (freedLines: number) => {
+          // 一次折叠只上报一次；期间被清债（收尾 / 展开 / 重建）也作废。
+          if (!state.foldPending || record.foldGeneration !== generation)
+            return;
+          state.foldPending = false;
+          record.hooks?.onFold?.(freedLines);
+        }
+      : undefined;
+
     state.renderedMessage = marked.message;
     record.originalUpdate.call(component, marked.message, state.isStreaming);
     const replaced = replaceMarkedThinkingSections(
@@ -470,6 +524,7 @@ function rebuild(
       hasThinkingContent,
       labelFor,
       record.options.getTheme,
+      onFold,
     );
     if (!replaced) {
       // Pi changed its internal child layout. Never leak markers or damage the
@@ -513,7 +568,10 @@ function forEachLiveComponent(
   }
 }
 
-function createPatchRecord(options: Partial<ThinkingFoldOptions>): PatchRecord {
+function createPatchRecord(
+  options: Partial<ThinkingFoldOptions>,
+  hooks?: ThinkingFoldHooks,
+): PatchRecord {
   const prototype = AssistantMessageComponent.prototype;
   const originalUpdate = prototype.updateContent;
   const record: PatchRecord = {
@@ -521,6 +579,8 @@ function createPatchRecord(options: Partial<ThinkingFoldOptions>): PatchRecord {
     expanded: false,
     now: Date.now(),
     options: normalizedOptions(options),
+    hooks,
+    foldGeneration: 0,
     originalUpdate,
     states: new WeakMap(),
     components: new Set(),
@@ -554,7 +614,15 @@ function createPatchRecord(options: Partial<ThinkingFoldOptions>): PatchRecord {
       // Ctrl+T is a persistent global display preference. Auto-collapse only
       // controls the folded representation; completing a later turn must not
       // override an explicit expanded choice.
-      this.rerenderTimestamp(message.timestamp);
+      //
+      // 折叠恰好发生在这一次重建里：只有它算「折叠那一帧」，历史消息重放或
+      // 后续内容更新都不会重复上报同一段推理。
+      this.foldingTimestamp = message.timestamp;
+      try {
+        this.rerenderTimestamp(message.timestamp);
+      } finally {
+        this.foldingTimestamp = undefined;
+      }
     },
     tick(now = Date.now()) {
       this.now = now;
@@ -577,6 +645,12 @@ function createPatchRecord(options: Partial<ThinkingFoldOptions>): PatchRecord {
       forEachLiveComponent(this, (component, state) => {
         if (state.fullMessage?.timestamp === timestamp)
           rebuild(component, state, this);
+      });
+    },
+    cancelPendingFolds() {
+      this.foldGeneration += 1;
+      forEachLiveComponent(this, (_component, state) => {
+        state.foldPending = false;
       });
     },
   };
@@ -606,6 +680,7 @@ function createPatchRecord(options: Partial<ThinkingFoldOptions>): PatchRecord {
 
 export function installThinkingFoldPatch(
   options: Partial<ThinkingFoldOptions> = {},
+  hooks?: ThinkingFoldHooks,
 ): ThinkingFoldPatchHandle {
   const prototype = AssistantMessageComponent.prototype;
   if (
@@ -617,8 +692,9 @@ export function installThinkingFoldPatch(
     );
   }
 
-  const record = getPatchRecord() ?? createPatchRecord(options);
+  const record = getPatchRecord() ?? createPatchRecord(options, hooks);
   record.owners += 1;
+  if (hooks) record.hooks = hooks;
   record.updateOptions(options);
   let disposed = false;
 
@@ -649,6 +725,9 @@ export function installThinkingFoldPatch(
     },
     tick(now) {
       record.tick(now);
+    },
+    cancelPendingFolds() {
+      record.cancelPendingFolds();
     },
     dispose() {
       if (disposed) return;
