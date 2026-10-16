@@ -104,10 +104,11 @@ interface PatchRecord {
 
 /**
  * 折叠发生时的上报钩子。高度留白机制靠它知道自己该留多少行：
- * 折叠砍掉的高度 = \`min(previewLines, 该段完整渲染行数)\`（见 height-reserve.ts）。
+ * 折叠砍掉的高度按**段**封顶后累加（见 height-reserve.ts 的 \`foldedHeight\`）。
  */
 export interface ThinkingFoldHooks {
-  onFold?(info: { previewLines: number; renderedLineCount: number }): void;
+  /** 本次折叠腾出的高度（各行按预览行数逐段封顶后累加）。 */
+  onFold?(freedLines: number): void;
 }
 
 export interface ThinkingFoldPatchHandle {
@@ -206,17 +207,23 @@ class RenderedThinkingContext {
      * 折叠当前帧才携带：折叠砍掉的高度只有真正渲染过才知道（Markdown 换行依赖
      * 终端宽度），所以在 prepare() 拿到宽度、行数落地之后才上报。
      */
-    readonly onFold: ((renderedLineCount: number) => void) | undefined,
+    readonly onFold: ((freedLines: number) => void) | undefined,
   ) {}
 
   add(section: RenderedThinkingSection): void {
     this.sections.push(section);
   }
 
-  /** 折叠前该消息的全部推理渲染行数；折叠后只剩各段的 label 行。 */
-  get totalRenderedLineCount(): number {
+  /**
+   * 折叠后腾出的高度：各段分别按预览行数封顶再累加。
+   *
+   * 逐段封顶而非对总数封顶——流式预览是每段各自只显示尾部 `previewLines` 行，
+   * 一条消息里的多段推理各自折掉各自的高度。
+   */
+  get freedLineCount(): number {
     return this.sections.reduce(
-      (total, section) => total + section.renderedLineCount,
+      (total, section) =>
+        total + Math.min(this.previewLines, section.renderedLineCount),
       0,
     );
   }
@@ -231,8 +238,7 @@ class RenderedThinkingContext {
             (section) => section.renderedLineCount > this.previewLines,
           );
     this.preparedWidth = width;
-    if (this.behavior === "collapse")
-      this.onFold?.(this.totalRenderedLineCount);
+    if (this.behavior === "collapse") this.onFold?.(this.freedLineCount);
   }
 
   invalidate(): void {
@@ -319,7 +325,6 @@ function collectThinkingRuns(message: AssistantMessage): NativeThinkingRun[] {
 
 function createMarkedThinkingMessage(
   message: AssistantMessage,
-  behavior: EffectiveBehavior,
 ): MarkedThinkingMessage | undefined {
   const runs = collectThinkingRuns(message);
   const firstRun = runs[0];
@@ -347,16 +352,12 @@ function createMarkedThinkingMessage(
     sections.push({ marker, text: run.text, showLabel });
   };
 
-  if (behavior === "collapse") {
-    for (const run of runs) clearRun(run);
-    markRun(firstRun, 0, true);
-  } else {
-    // preview: mark every run; only the first carries the label.
-    for (const run of runs) clearRun(run);
-    runs.forEach((run, runIndex) => {
-      if (runIndex === 0 || run.text) markRun(run, runIndex, runIndex === 0);
-    });
-  }
+  // 每段推理都要保留成 section：折叠时高度债按「全部推理折掉的行数」计，
+  // 只留第一段会漏记其余段的高度，留白补不够，位移照旧发生。
+  for (const run of runs) clearRun(run);
+  runs.forEach((run, runIndex) => {
+    if (runIndex === 0 || run.text) markRun(run, runIndex, runIndex === 0);
+  });
 
   return { message: { ...message, content }, sections };
 }
@@ -380,7 +381,7 @@ function replaceMarkedThinkingSections(
   collapseCanExpand: boolean,
   labelFor: (canExpand: boolean) => string,
   getTheme: (() => Theme) | undefined,
-  onFold: ((renderedLineCount: number) => void) | undefined,
+  onFold: ((freedLines: number) => void) | undefined,
 ): boolean {
   const internals = component as unknown as AssistantMessageInternals;
   const children = internals.contentContainer?.children;
@@ -470,7 +471,7 @@ function rebuild(
     const timing = record.timings.get(message.timestamp);
     const completed = timing?.completedAt !== undefined;
     const behavior: EffectiveBehavior = completed ? "collapse" : "preview";
-    const marked = createMarkedThinkingMessage(message, behavior);
+    const marked = createMarkedThinkingMessage(message);
     if (!marked) {
       state.renderedMessage = message;
       record.originalUpdate.call(component, message, state.isStreaming);
@@ -490,14 +491,13 @@ function rebuild(
             canExpand,
           );
 
+    // 置位而非赋值：折叠与渲染之间可能夹着多次重建（同一帧内的其它更新），
+    // 上报要一直挂到某次真实渲染把它消费掉为止。
     if (record.foldingTimestamp === message.timestamp) state.foldPending = true;
     const onFold = state.foldPending
-      ? (renderedLineCount: number) => {
+      ? (freedLines: number) => {
           state.foldPending = false;
-          record.hooks?.onFold?.({
-            previewLines: record.options.previewLines,
-            renderedLineCount,
-          });
+          record.hooks?.onFold?.(freedLines);
         }
       : undefined;
 
@@ -579,13 +579,6 @@ function createPatchRecord(
     setExpanded(expanded) {
       if (this.expanded === expanded) return;
       this.expanded = expanded;
-      // 再次折叠同样会砍掉高度，也要走一遍留白补偿（展开那边由扩展清债）。
-      if (!expanded) {
-        forEachLiveComponent(this, (_component, state) => {
-          if (state.fullMessage?.content.some((b) => b.type === "thinking"))
-            state.foldPending = true;
-        });
-      }
       this.rerenderAll();
     },
     setMessageTiming(timestamp, timing) {

@@ -83,8 +83,7 @@ export default function (pi: ExtensionAPI) {
     patch = installThinkingFoldPatch(
       {},
       {
-        onFold: ({ previewLines, renderedLineCount }) =>
-          reserve?.noteFold(previewLines, renderedLineCount),
+        onFold: (freedLines) => reserve?.noteFold(freedLines),
       },
     );
   } catch (error) {
@@ -167,7 +166,7 @@ export default function (pi: ExtensionAPI) {
         };
         if (!reserve) {
           try {
-            reserve = installHeightReserve({ getTui: () => tui });
+            reserve = installHeightReserve(() => tui);
             reserve.sync();
           } catch {
             // Pi 改了组件渲染 API：留白不生效，折叠渲染本身照常工作。

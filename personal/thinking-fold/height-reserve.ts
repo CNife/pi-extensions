@@ -1,6 +1,7 @@
 import {
   AssistantMessageComponent,
   ToolExecutionComponent,
+  UserMessageComponent,
 } from "@earendil-works/pi-coding-agent";
 import {
   type Component,
@@ -25,20 +26,23 @@ import {
 // ============================================================================
 
 /**
- * 折叠时新增的高度债：按实际折掉的行数计入，折叠预览行数封顶。
+ * 单段推理折叠后腾出来的高度：流式预览本就只显示尾 `previewLines` 行，
+ * 所以折掉的高度以预览行数封顶。
  *
  * 封顶是必需的：推理很短（只渲染了 3 行）时多留 10 行会有还不完的余债。
+ * 按**段**封顶：一条消息里被文本隔开的两段推理各自折掉各自的高度，
+ * 对总数封顶会把后面的段漏掉。
  */
-export function foldDebt(
-  debt: number,
+export function foldedHeight(
   previewLines: number,
   renderedLineCount: number,
 ): number {
-  const freed = Math.min(
-    Math.max(0, previewLines),
-    Math.max(0, renderedLineCount),
-  );
-  return Math.max(0, debt) + freed;
+  return Math.min(Math.max(0, previewLines), Math.max(0, renderedLineCount));
+}
+
+/** 折叠时新增的高度债：把各段腾出的高度累加起来（已按段封顶）。 */
+export function foldDebt(debt: number, freedLines: number): number {
+  return Math.max(0, debt) + Math.max(0, freedLines);
 }
 
 /**
@@ -75,12 +79,17 @@ function observeHeight(component: Component, height: number): void {
   for (const reserve of liveReserves) reserve.observe(component, height);
 }
 
-/** 折叠后长高的那部分内容是留白的偿还来源；这里只量高，不动渲染结果。 */
+/**
+ * 折叠后长高的 transcript 内容（助手文本、工具块、用户消息）是留白的偿还来源；
+ * 这里只量高，不动渲染结果。不进这条路的（状态行、编辑器）不参与偿还。
+ */
 function installHeightPatches(): void {
   if (heightPatches) return;
-  const targets = [AssistantMessageComponent, ToolExecutionComponent].map(
-    (component) => component.prototype as unknown as RenderTarget,
-  );
+  const targets = [
+    AssistantMessageComponent,
+    ToolExecutionComponent,
+    UserMessageComponent,
+  ].map((component) => component.prototype as unknown as RenderTarget);
   // 全部确认可用后才动手，避免半途抛错留下半个 patch。
   if (targets.some((target) => typeof target.render !== "function"))
     throw new Error("Pi's transcript component rendering API is unavailable");
@@ -114,7 +123,7 @@ export interface HeightReserveHandle {
   /** 当前挂着的高度债行数（测试与排查用）。 */
   readonly debt: number;
   /** 折叠发生时上报本次折掉的行数；同一段推理只应上报一次，由调用方保证。 */
-  noteFold(previewLines: number, renderedLineCount: number): void;
+  noteFold(freedLines: number): void;
   /** 定位 transcript 内容容器并挂载留白；幂等，可每帧调用。 */
   sync(): void;
   /** 清债（本轮结束 / Ctrl+T 展开 / transcript 重建）。 */
@@ -123,8 +132,8 @@ export interface HeightReserveHandle {
 }
 
 export interface HeightReserveOptions {
-  /** 取当前 TUI；未就绪时返回 undefined，留白机制安静地不生效。 */
-  getTui?: () => TUI | undefined;
+  /** 取当前 TUI。regular 模式下 `isViewportTUI` 判定失败，留白机制安静地不生效。 */
+  getTui: () => TUI | undefined;
 }
 
 interface FollowingViewport {
@@ -145,8 +154,8 @@ class HeightReserve implements Component, HeightReserveHandle {
     return this.debtLines;
   }
 
-  noteFold(previewLines: number, renderedLineCount: number): void {
-    this.debtLines = foldDebt(this.debtLines, previewLines, renderedLineCount);
+  noteFold(freedLines: number): void {
+    this.debtLines = foldDebt(this.debtLines, freedLines);
   }
 
   /**
@@ -234,8 +243,8 @@ function findTranscriptContainer(tui: TUI): Container | undefined {
 }
 
 export function installHeightReserve(
-  options: HeightReserveOptions = {},
+  getTui: HeightReserveOptions["getTui"],
 ): HeightReserveHandle {
   installHeightPatches();
-  return new HeightReserve(options.getTui ?? (() => undefined));
+  return new HeightReserve(getTui);
 }
