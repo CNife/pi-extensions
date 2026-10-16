@@ -10,6 +10,10 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { getKeybindings } from "@earendil-works/pi-tui";
 import {
+  type HeightReserveHandle,
+  installHeightReserve,
+} from "../height-reserve.ts";
+import {
   DEFAULT_THINKING_CURSOR_LABEL,
   installThinkingFoldPatch,
   type ThinkingFoldPatchHandle,
@@ -73,9 +77,16 @@ export default function (pi: ExtensionAPI) {
   let thinkingCompleted = false;
   let patchError: string | undefined;
   let requestRender: (() => void) | undefined;
+  let reserve: HeightReserveHandle | undefined;
 
   try {
-    patch = installThinkingFoldPatch({});
+    patch = installThinkingFoldPatch(
+      {},
+      {
+        onFold: ({ previewLines, renderedLineCount }) =>
+          reserve?.noteFold(previewLines, renderedLineCount),
+      },
+    );
   } catch (error) {
     patchError = error instanceof Error ? error.message : String(error);
   }
@@ -149,7 +160,20 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.setWidget(
       RENDER_BRIDGE_WIDGET,
       (tui) => {
-        requestRender = () => tui.requestRender();
+        requestRender = () => {
+          // 挂载点每帧都可能变（模式切换、transcript 重建），渲染前对齐一次。
+          reserve?.sync();
+          tui.requestRender();
+        };
+        if (!reserve) {
+          try {
+            reserve = installHeightReserve({ getTui: () => tui });
+            reserve.sync();
+          } catch {
+            // Pi 改了组件渲染 API：留白不生效，折叠渲染本身照常工作。
+            reserve = undefined;
+          }
+        }
         return {
           render: () => [],
           invalidate() {},
@@ -167,6 +191,8 @@ export default function (pi: ExtensionAPI) {
         return;
 
       patch.toggle();
+      // 展开把隐藏的推理放回来，留白从此没有偿还来源，立即清债。
+      reserve?.clear();
       requestRender?.();
       return { consume: true };
     });
@@ -227,6 +253,18 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
+  // transcript 被整体重建（compaction / 分支切换）时画面重排本来就是正确行为，
+  // 留着旧债务只会让新历史多出一片空白。
+  pi.on("session_compact", () => reserve?.clear());
+  pi.on("session_tree", () => reserve?.clear());
+
+  pi.on("agent_settled", (_event, ctx) => {
+    // 一轮结束时债务一次性清零：不再有内容会来偿还它。
+    reserve?.clear();
+    requestRender?.();
+    if (ctx.mode === "tui") clearStreamStatus(ctx);
+  });
+
   const clearStreamStatus = (ctx: ExtensionContext) => {
     stopItemTimer();
     thinkingStartedAt = undefined;
@@ -256,6 +294,7 @@ export default function (pi: ExtensionAPI) {
     }
     currentAssistant = undefined;
     clearStreamStatus(ctx);
+    requestRender?.();
   });
 
   pi.on("session_shutdown", (_event, ctx) => {
@@ -268,6 +307,8 @@ export default function (pi: ExtensionAPI) {
     }
     patch?.dispose();
     patch = undefined;
+    reserve?.dispose();
+    reserve = undefined;
     if (requestRender) {
       requestRender();
       ctx.ui.setWidget(RENDER_BRIDGE_WIDGET, undefined);
