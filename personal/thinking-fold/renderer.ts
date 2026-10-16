@@ -37,6 +37,8 @@ interface ComponentState {
   fullMessage?: AssistantMessage;
   renderedMessage?: AssistantMessage;
   isStreaming?: boolean;
+  /** 已经折叠但还没把砍掉的高度上报出去（等这一帧渲染出真实行数）。 */
+  foldPending?: boolean;
 }
 
 interface AssistantMessageInternals {
@@ -87,6 +89,9 @@ interface PatchRecord {
   components: Set<WeakRef<AssistantMessageComponent>>;
   knownComponents: WeakSet<AssistantMessageComponent>;
   timings: Map<number, ThinkingTiming>;
+  hooks?: ThinkingFoldHooks;
+  /** 正在上报折叠的时间戳；只有这一次重建算「折叠那一帧」。 */
+  foldingTimestamp?: number;
   updateOptions(options: Partial<ThinkingFoldOptions>): void;
   setExpanded(expanded: boolean): void;
   setMessageTiming(timestamp: number, timing: ThinkingTiming): void;
@@ -95,6 +100,14 @@ interface PatchRecord {
   tick(now?: number): void;
   rerenderAll(): void;
   rerenderTimestamp(timestamp: number): void;
+}
+
+/**
+ * 折叠发生时的上报钩子。高度留白机制靠它知道自己该留多少行：
+ * 折叠砍掉的高度 = \`min(previewLines, 该段完整渲染行数)\`（见 height-reserve.ts）。
+ */
+export interface ThinkingFoldHooks {
+  onFold?(info: { previewLines: number; renderedLineCount: number }): void;
 }
 
 export interface ThinkingFoldPatchHandle {
@@ -189,10 +202,23 @@ class RenderedThinkingContext {
     readonly collapseCanExpand: boolean,
     readonly labelFor: (canExpand: boolean) => string,
     readonly getTheme: (() => Theme) | undefined,
+    /**
+     * 折叠当前帧才携带：折叠砍掉的高度只有真正渲染过才知道（Markdown 换行依赖
+     * 终端宽度），所以在 prepare() 拿到宽度、行数落地之后才上报。
+     */
+    readonly onFold: ((renderedLineCount: number) => void) | undefined,
   ) {}
 
   add(section: RenderedThinkingSection): void {
     this.sections.push(section);
+  }
+
+  /** 折叠前该消息的全部推理渲染行数；折叠后只剩各段的 label 行。 */
+  get totalRenderedLineCount(): number {
+    return this.sections.reduce(
+      (total, section) => total + section.renderedLineCount,
+      0,
+    );
   }
 
   prepare(width: number): void {
@@ -205,6 +231,8 @@ class RenderedThinkingContext {
             (section) => section.renderedLineCount > this.previewLines,
           );
     this.preparedWidth = width;
+    if (this.behavior === "collapse")
+      this.onFold?.(this.totalRenderedLineCount);
   }
 
   invalidate(): void {
@@ -352,6 +380,7 @@ function replaceMarkedThinkingSections(
   collapseCanExpand: boolean,
   labelFor: (canExpand: boolean) => string,
   getTheme: (() => Theme) | undefined,
+  onFold: ((renderedLineCount: number) => void) | undefined,
 ): boolean {
   const internals = component as unknown as AssistantMessageInternals;
   const children = internals.contentContainer?.children;
@@ -366,6 +395,7 @@ function replaceMarkedThinkingSections(
     collapseCanExpand,
     labelFor,
     getTheme,
+    onFold,
   );
   for (let index = 0; index < children.length; index++) {
     const child = children[index];
@@ -460,6 +490,17 @@ function rebuild(
             canExpand,
           );
 
+    if (record.foldingTimestamp === message.timestamp) state.foldPending = true;
+    const onFold = state.foldPending
+      ? (renderedLineCount: number) => {
+          state.foldPending = false;
+          record.hooks?.onFold?.({
+            previewLines: record.options.previewLines,
+            renderedLineCount,
+          });
+        }
+      : undefined;
+
     state.renderedMessage = marked.message;
     record.originalUpdate.call(component, marked.message, state.isStreaming);
     const replaced = replaceMarkedThinkingSections(
@@ -470,6 +511,7 @@ function rebuild(
       hasThinkingContent,
       labelFor,
       record.options.getTheme,
+      onFold,
     );
     if (!replaced) {
       // Pi changed its internal child layout. Never leak markers or damage the
@@ -513,7 +555,10 @@ function forEachLiveComponent(
   }
 }
 
-function createPatchRecord(options: Partial<ThinkingFoldOptions>): PatchRecord {
+function createPatchRecord(
+  options: Partial<ThinkingFoldOptions>,
+  hooks?: ThinkingFoldHooks,
+): PatchRecord {
   const prototype = AssistantMessageComponent.prototype;
   const originalUpdate = prototype.updateContent;
   const record: PatchRecord = {
@@ -521,6 +566,7 @@ function createPatchRecord(options: Partial<ThinkingFoldOptions>): PatchRecord {
     expanded: false,
     now: Date.now(),
     options: normalizedOptions(options),
+    hooks,
     originalUpdate,
     states: new WeakMap(),
     components: new Set(),
@@ -533,6 +579,13 @@ function createPatchRecord(options: Partial<ThinkingFoldOptions>): PatchRecord {
     setExpanded(expanded) {
       if (this.expanded === expanded) return;
       this.expanded = expanded;
+      // 再次折叠同样会砍掉高度，也要走一遍留白补偿（展开那边由扩展清债）。
+      if (!expanded) {
+        forEachLiveComponent(this, (_component, state) => {
+          if (state.fullMessage?.content.some((b) => b.type === "thinking"))
+            state.foldPending = true;
+        });
+      }
       this.rerenderAll();
     },
     setMessageTiming(timestamp, timing) {
@@ -554,7 +607,15 @@ function createPatchRecord(options: Partial<ThinkingFoldOptions>): PatchRecord {
       // Ctrl+T is a persistent global display preference. Auto-collapse only
       // controls the folded representation; completing a later turn must not
       // override an explicit expanded choice.
-      this.rerenderTimestamp(message.timestamp);
+      //
+      // 折叠恰好发生在这一次重建里：只有它算「折叠那一帧」，历史消息重放或
+      // 后续内容更新都不会重复上报同一段推理。
+      this.foldingTimestamp = message.timestamp;
+      try {
+        this.rerenderTimestamp(message.timestamp);
+      } finally {
+        this.foldingTimestamp = undefined;
+      }
     },
     tick(now = Date.now()) {
       this.now = now;
@@ -606,6 +667,7 @@ function createPatchRecord(options: Partial<ThinkingFoldOptions>): PatchRecord {
 
 export function installThinkingFoldPatch(
   options: Partial<ThinkingFoldOptions> = {},
+  hooks?: ThinkingFoldHooks,
 ): ThinkingFoldPatchHandle {
   const prototype = AssistantMessageComponent.prototype;
   if (
@@ -617,8 +679,9 @@ export function installThinkingFoldPatch(
     );
   }
 
-  const record = getPatchRecord() ?? createPatchRecord(options);
+  const record = getPatchRecord() ?? createPatchRecord(options, hooks);
   record.owners += 1;
+  if (hooks) record.hooks = hooks;
   record.updateOptions(options);
   let disposed = false;
 
