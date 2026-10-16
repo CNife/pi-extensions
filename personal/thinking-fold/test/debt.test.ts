@@ -19,9 +19,20 @@ test("单段腾出的高度：按实际渲染行数计，预览行数封顶", ()
 });
 
 test("折叠计入：各段腾出的高度累加", () => {
-  // 两段各预览 10 行、各自都超过预览：合计 20，不是被总数封顶成 10。
-  equal(foldDebt(0, foldedHeight(10, 42) + foldedHeight(10, 30)), 20);
+  // 一条消息里被文本隔开的两段推理，各自都超过预览行数：
+  // 合计应为 2 × previewLines，而不是被总数封顶成一个 previewLines。
+  equal(foldDebt(0, foldedHeight(10, 40) + foldedHeight(10, 30)), 20);
   equal(foldDebt(0, foldedHeight(10, 3) + foldedHeight(10, 2)), 5);
+});
+
+test("多段推理的债务不被总数封顶", () => {
+  const sections = [40, 30, 25];
+  const freed = sections.reduce(
+    (sum, lines) => sum + foldedHeight(10, lines),
+    0,
+  );
+  equal(freed, 30);
+  equal(foldDebt(0, freed), 30);
 });
 
 test("折叠与已有债务累加", () => {

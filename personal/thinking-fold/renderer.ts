@@ -4,6 +4,7 @@ import {
   type Theme,
 } from "@earendil-works/pi-coding-agent";
 import { type Component, Markdown, Text } from "@earendil-works/pi-tui";
+import { foldedHeight } from "./height-reserve.ts";
 
 export interface ThinkingFoldOptions {
   getTheme?: () => Theme;
@@ -92,6 +93,11 @@ interface PatchRecord {
   hooks?: ThinkingFoldHooks;
   /** 正在上报折叠的时间戳；只有这一次重建算「折叠那一帧」。 */
   foldingTimestamp?: number;
+  /**
+   * 递增的代数。清债（收尾 / 展开 / transcript 重建）会 +1，
+   * 让已经挂起但还没渲染的那次上报作废。
+   */
+  foldGeneration: number;
   updateOptions(options: Partial<ThinkingFoldOptions>): void;
   setExpanded(expanded: boolean): void;
   setMessageTiming(timestamp: number, timing: ThinkingTiming): void;
@@ -100,6 +106,7 @@ interface PatchRecord {
   tick(now?: number): void;
   rerenderAll(): void;
   rerenderTimestamp(timestamp: number): void;
+  cancelPendingFolds(): void;
 }
 
 /**
@@ -121,6 +128,8 @@ export interface ThinkingFoldPatchHandle {
   beginMessage(message: AssistantMessage, startedAt?: number): void;
   completeMessage(message: AssistantMessage, completedAt?: number): void;
   tick(now?: number): void;
+  /** 作废已挂起但还没渲染的折叠上报；清债时调用。 */
+  cancelPendingFolds(): void;
   dispose(): void;
 }
 
@@ -223,7 +232,7 @@ class RenderedThinkingContext {
   get freedLineCount(): number {
     return this.sections.reduce(
       (total, section) =>
-        total + Math.min(this.previewLines, section.renderedLineCount),
+        total + foldedHeight(this.previewLines, section.renderedLineCount),
       0,
     );
   }
@@ -494,8 +503,12 @@ function rebuild(
     // 置位而非赋值：折叠与渲染之间可能夹着多次重建（同一帧内的其它更新），
     // 上报要一直挂到某次真实渲染把它消费掉为止。
     if (record.foldingTimestamp === message.timestamp) state.foldPending = true;
+    const generation = record.foldGeneration;
     const onFold = state.foldPending
       ? (freedLines: number) => {
+          // 一次折叠只上报一次；期间被清债（收尾 / 展开 / 重建）也作废。
+          if (!state.foldPending || record.foldGeneration !== generation)
+            return;
           state.foldPending = false;
           record.hooks?.onFold?.(freedLines);
         }
@@ -567,6 +580,7 @@ function createPatchRecord(
     now: Date.now(),
     options: normalizedOptions(options),
     hooks,
+    foldGeneration: 0,
     originalUpdate,
     states: new WeakMap(),
     components: new Set(),
@@ -631,6 +645,12 @@ function createPatchRecord(
       forEachLiveComponent(this, (component, state) => {
         if (state.fullMessage?.timestamp === timestamp)
           rebuild(component, state, this);
+      });
+    },
+    cancelPendingFolds() {
+      this.foldGeneration += 1;
+      forEachLiveComponent(this, (_component, state) => {
+        state.foldPending = false;
       });
     },
   };
@@ -705,6 +725,9 @@ export function installThinkingFoldPatch(
     },
     tick(now) {
       record.tick(now);
+    },
+    cancelPendingFolds() {
+      record.cancelPendingFolds();
     },
     dispose() {
       if (disposed) return;

@@ -191,7 +191,7 @@ export default function (pi: ExtensionAPI) {
 
       patch.toggle();
       // 展开把隐藏的推理放回来，留白从此没有偿还来源，立即清债。
-      reserve?.clear();
+      clearDebt();
       requestRender?.();
       return { consume: true };
     });
@@ -252,14 +252,21 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
+  // 清债的同时作废还没渲染的折叠上报：否则「折叠 → 清债 → 那一帧才渲染」
+  // 会把这笔债重新加回来，而本轮已经没有内容会偿还它。
+  const clearDebt = () => {
+    patch?.cancelPendingFolds();
+    reserve?.clear();
+  };
+
   // transcript 被整体重建（compaction / 分支切换）时画面重排本来就是正确行为，
   // 留着旧债务只会让新历史多出一片空白。
-  pi.on("session_compact", () => reserve?.clear());
-  pi.on("session_tree", () => reserve?.clear());
+  pi.on("session_compact", clearDebt);
+  pi.on("session_tree", clearDebt);
 
   pi.on("agent_settled", (_event, ctx) => {
     // 一轮结束时债务一次性清零：不再有内容会来偿还它。
-    reserve?.clear();
+    clearDebt();
     requestRender?.();
     if (ctx.mode === "tui") clearStreamStatus(ctx);
   });
