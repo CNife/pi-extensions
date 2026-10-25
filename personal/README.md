@@ -36,7 +36,7 @@ pi --no-extensions -e personal/<pkg>
 
 旧方案用 `scripts/sync-personal.mjs` 把 personal 条目软链到 `~/.pi/agent/extensions/`。迁移到 git 包前**必须**先清掉软链残留，否则双加载：
 
-1. 删除 `~/.pi/agent/extensions/` 下所有指向 `personal/` 的软链（文件型 `exit.ts` / `stash-input.ts` / `debug-request-body.ts`，包型 `advisor-adapter` / `nmem-lite` / `thinking-fold`）与 `~/.pi/agent/skills/` 下 nmem 技能软链（`save-thread` / `search-memory` / `distill-memory` / `read-working-memory` / `status`）；
+1. 删除 `~/.pi/agent/extensions/` 下所有指向 `personal/` 的软链（文件型 `exit.ts` / `stash-input.ts` / `debug-request-body.ts`，包型 `advisor-adapter` / `nmem-lite` / `thinking-fold`）与 `~/.pi/agent/skills/` 下 nmem 技能软链（旧名 `save-thread` / `search-memory` / `distill-memory` / `read-working-memory` / `status`，现为单个 `nmem-guide`）；
 2. **先于 install** 删除 `~/.pi/agent/git/github.com/CNife/pi-extensions` 处的旧软链（旧的全量加载技巧）--pi 更新 git 包时会 `reset --hard` + clean 克隆，若顺软链操作会毁掉开发克隆未提交的工作；
 3. `pi install git:github.com/CNife/pi-extensions`。
 
@@ -49,7 +49,7 @@ pi --no-extensions -e personal/<pkg>
 | `exit.ts` | 文件 | 输入 `exit` 退出会话（自 miscs） |
 | `debug-request-body.ts` | 文件 | `PI_DEBUG_REQUEST_BODY` 门闩下写请求体（自 miscs） |
 | `stash-input.ts` | 文件 | alt+s 暂存/恢复输入框文本：有内容时暂存并清空（已有暂存时需双击确认覆盖），空时恢复 |
-| `nmem-lite/` | 包 | nmem 会话自动同步 + 精简引导；召回/保存走官方 `nmem` CLI + 技能（替代 `npm:@cnife/pi-nmem`） |
+| `nmem-lite/` | 包 | nmem 会话自动同步 + 精简引导；召回/保存走官方 `nmem` CLI + `nmem-guide` 技能（替代 `npm:@cnife/pi-nmem`，分工见 [ADR 0006](../docs/adr/0006-nmem-lite-vs-pi-nmem.md)） |
 | `thinking-fold/` | 包 | 推理块尾部预览 + 完成折叠 + Ctrl+T 展开（trace-only，基于 `@99percentpeople/pi-thinking-fold` 简化重写，替代 `npm:@99percentpeople/pi-thinking-fold`） |
 | `skills/` | 技能组 | 5 个 pi-agent 技能（2026-08-02 自 CNife/skills 迁入，随包多机分发）：`pi-trending` / `search-pi-extensions` / `add-provider-models-to-pi` / `pi-session-query` / `herdr-subagent`。**结构约束**：`personal/skills/` 下只允许一层技能目录（每目录含 `SKILL.md`），禁止放松散文件——根 manifest glob `personal/skills/*` 会把任何直接子项当技能加载 |
 | `plannotator-cli/` | 包 | Plannotator 浏览器审阅/标注（CLI shell-out，OMP 同名插件移植），注入 `/pnr` `/pna` `/pnl` 三命令 |

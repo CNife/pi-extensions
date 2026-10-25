@@ -1,6 +1,6 @@
 {
   "name": "nmem-lite",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "nmem 会话自动同步 + 精简引导（personal 层，替代 npm:@cnife/pi-nmem）",
