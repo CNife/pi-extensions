@@ -228,7 +228,7 @@ function parseModelRef(
   return { provider: parts[0], id: parts[1] };
 }
 
-async function generateTitle(
+export async function generateTitle(
   ctx: ExtensionContext,
   config: AutoNamingConfig,
   transcript: string,
@@ -267,11 +267,17 @@ async function generateTitle(
     try {
       if (!ctx.modelRegistry.hasConfiguredAuth(candidate)) return null;
       const response = await ctx.modelRegistry.complete(candidate, context, {
-        maxTokens: 60,
+        // 推理模型会先输出 thinking 再输出标题，60 token 会被 thinking 吃光，
+        // 响应以 stopReason="length" 截断、content 里没有 text，标题静默丢失。
+        maxTokens: 1024,
+        // 部分 provider（如 opencode-go）要求请求携带会话标识，pi 由
+        // options.sessionId 派生对应 header；缺失时请求 400 MissingSessionID。
+        sessionId: ctx.sessionManager.getSessionId(),
       });
       if (
         response.stopReason === "error" ||
-        response.stopReason === "aborted"
+        response.stopReason === "aborted" ||
+        response.stopReason === "length"
       ) {
         return null;
       }
