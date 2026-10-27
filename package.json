@@ -8,7 +8,9 @@
   "pi": {
     "extensions": [
       "personal/*.ts",
-      "personal/*/extensions"
+      "personal/nmem-lite/extensions/nmem-lite.ts",
+      "personal/plannotator-cli/extensions/index.ts",
+      "personal/thinking-fold/extensions/index.ts"
     ],
     "skills": [
       "personal/*/skills",
