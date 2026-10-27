@@ -1,6 +1,8 @@
 # personal/
 
-个人扩展树：随 monorepo 根 pi 包（git 安装）分发，**不进** npm workspaces、**不**发布。根 [`package.json`](../package.json) 的 `pi` manifest 只暴露 `personal/` 下资源（文件型 `*.ts`、包型 `*/extensions`、包内技能 `*/skills`、技能组 `skills/*`），`packages/` 里的产品包不会被根包重复加载。
+个人扩展树：随 monorepo 根 pi 包（git 安装）分发，**不进** npm workspaces、**不**发布。根 [`package.json`](../package.json) 的 `pi` manifest 只暴露 `personal/` 下资源（文件型条目 glob `*.ts`、包型条目的入口文件逐个显式列出、包内技能 `*/skills`、技能组 `skills/*`），`packages/` 里的产品包不会被根包重复加载。
+
+**包型条目必须逐个登记入口文件**：目录 glob（曾为 `personal/*/extensions`）会把包内仅供 import 的 helper 模块也当扩展入口，pi 加载时因「不导出 factory function」直接退出。新增包型条目时同步在根 manifest 加一行入口路径。
 
 产品包放 `packages/`；停用的插件（曾为产品的包、不再需要的个人扩展）放 `archive/`。本目录只收「可公开参考 / 多机自用、但不值得付发布税」的扩展。
 

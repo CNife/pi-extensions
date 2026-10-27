@@ -105,7 +105,7 @@ pi install git:github.com/CNife/pi-extensions   # 不 pin ref，跟踪 main
 pi update --extensions                          # 各机拉新
 ```
 
-- **根 manifest**：`extensions: ["personal/*.ts", "personal/*/extensions"]`、`skills: ["personal/*/skills"]`。`personal/*.ts` 收文件型条目；`personal/*/extensions` 收包型条目的扩展目录（pi glob 匹配目录后按约定扫 `.ts`）；`personal/*/skills` 收 nmem-lite 技能。`packages/` 产品包不被根包暴露，无双加载。
+- **根 manifest**：`extensions: ["personal/*.ts", ...各包型条目的入口文件]`、`skills: ["personal/*/skills", "personal/skills/*"]`。`personal/*.ts` 收文件型条目；包型条目的入口**逐个显式列出**（2026-10-25 后不再用目录 glob，原因见下文「包型入口显式登记」）；`skills` 两条收 nmem-lite 技能与技能组。`packages/` 产品包不被根包暴露，无双加载。
 - **依赖**：pi 装 git 包时只在克隆根跑一次 `npm install`，npm 只认根依赖与 workspaces；personal 不进 workspaces（分层不变）。`@juicesharp/rpiv-advisor` 是唯一真实运行时依赖，声明在根 `dependencies`，落在克隆根 `node_modules`；`advisor-adapter` 的 deep-import 沿目录向上解析到根 `node_modules`。`@earendil-works/*` 仍全走 peerDependencies。
 - **`personal/*/package.json` 保留**（本地 `pi -e personal/<pkg>` 隔离开发用），但其 `pi` manifest 在 git 包模式下不生效--git 包只有根 manifest 生效，无嵌套发现。
 - **不 pin ref**：仓库 public，https 免认证。freshness 由 `pi update --extensions` 保证（机制上限：push + update 才生效，接受延迟）。
@@ -115,6 +115,12 @@ pi update --extensions                          # 各机拉新
 ### thinking-fold 布局归一
 
 `thinking-fold`（PR #146，本修订前新增）原本入口在包根 `./index.ts`，与 `advisor-adapter`/`nmem-lite` 的 `extensions/` 约定不一致，会被根 manifest glob `personal/*/extensions` 漏掉。本次将其归一：`index.ts` 移入 `extensions/`，`./renderer.ts` 改 `../renderer.ts`，自身 manifest 改 `["./extensions"]`。属结构归一，非功能改动。
+
+### 包型入口显式登记
+
+2026-10-25 把 `nmem-lite` 拆成薄入口 `nmem-lite.ts` + helper `rest.ts` / `session-sync.ts`，helper 不导出 factory function；根 manifest 的目录 glob `personal/*/extensions` 把它们也当扩展入口，pi 启动即 `Extension does not export a valid factory function` 退出（`pi -ne` 正常），整机 pi 不可用。
+
+决定：`extensions` 中包型条目改为**逐个显式列出入口文件**，不再用目录 glob。代价是新增包型条目要在根 manifest 加一行；收益是包内 helper 不会被动变成入口。包自身 `package.json` 的 `pi` manifest 仍可用目录（`thinking-fold` 的 `["./extensions"]`），那只影响本地 `pi -e personal/<pkg>`，包内没有 helper 时安全。
 
 ### 本机迁移（地雷）
 
