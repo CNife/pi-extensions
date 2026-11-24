@@ -1,28 +1,24 @@
 /**
- * 压缩阈值的纯算术部分（无 pi 依赖，可单独测试）。
+ * 压缩阈值的纯算术与状态机（无 pi 依赖，可单独测试）。
  *
  * 阈值 = min(绝对上限, 窗口 × 比例)，即「已用 token 到了这个数就压缩」。
- * pi 内建的 `compaction.reserveTokens` 只能写死常量，换个窗口的模型就得
- * 手工重算，所以阈值放到扩展里按当前模型的窗口实时算。
+ * pi 内建的 `compaction.reserveTokens` 与 `compaction.modelOverrides` 都只能
+ * 写死 per-model 常量、没有「按窗口自动算」的能力，换个窗口的模型就得手工
+ * 重算，所以阈值放到扩展里按当前模型的窗口实时算。
  */
 
-export interface ThresholdOptions {
-  /** 已用 token 的绝对上限 */
-  maxUsedTokens: number;
-  /** 占窗口的比例上限 */
-  triggerPercent: number;
-}
+/** 已用 token 的绝对上限。 */
+export const MAX_USED_TOKENS = 300_000;
 
-/** 300K 或 85%，取较小者。 */
-export const DEFAULT_THRESHOLD_OPTIONS: ThresholdOptions = {
-  maxUsedTokens: 300_000,
-  triggerPercent: 0.85,
-};
+/** 占窗口的比例上限。 */
+export const TRIGGER_PERCENT = 0.85;
+
+/** 同一次超标最多尝试几次压缩，超过就放弃、交给 pi 内建兜底。 */
+export const MAX_ATTEMPTS = 3;
 
 /** 窗口无效（负数、NaN、缺失）时返回 null，表示不参与判断。 */
 export function compactionThreshold(
   contextWindow: number | null | undefined,
-  options: ThresholdOptions = DEFAULT_THRESHOLD_OPTIONS,
 ): number | null {
   if (
     contextWindow === null ||
@@ -32,41 +28,69 @@ export function compactionThreshold(
   ) {
     return null;
   }
-  return Math.floor(
-    Math.min(options.maxUsedTokens, contextWindow * options.triggerPercent),
-  );
+  return Math.floor(Math.min(MAX_USED_TOKENS, contextWindow * TRIGGER_PERCENT));
 }
+
+export interface CompactionState {
+  /** 已触发压缩、正等占用降回阈值以下 */
+  suppressed: boolean;
+  /** 本轮超标已经尝试过几次压缩 */
+  attempts: number;
+}
+
+export const INITIAL_STATE: CompactionState = {
+  suppressed: false,
+  attempts: 0,
+};
 
 export interface CompactionDecision {
   /** 本轮是否该触发压缩 */
   trigger: boolean;
-  /** 下一次判断时传入的抑制标记 */
-  suppressed: boolean;
+  /** 下一次判断要带着的状态 */
+  state: CompactionState;
 }
 
 /**
  * 决定是否触发压缩，并返回下一次判断要带着的状态。
  *
- * 语义是「超过阈值就压一次」，用抑制标记保证同一次超标只压一次：
+ * 语义是「超过阈值就压，一次超标内允许有界重试」：
  *
- * - 降到阈值以下 → 解除抑制，下次再超就再压；
- * - 仍在阈值之上（压缩没压到位、正在压）→ 保持抑制，绝不每轮重压；
- * - 首次采样就超标（例如 resume 一个已经很长的会话）→ 直接触发，不需要
- *   先看到「从下往上跨过」的过程。
+ * - 降到阈值以下 → 解除抑制、清零尝试次数，下次再超就再压；
+ * - 已抑制（压缩完成、还没产生新回复所以占用未知）→ 不动，绝不每轮重压；
+ * - 尝试次数用尽 → 保持抑制，放弃本次超标，交给 pi 内建的 98% 兜底。
  */
 export function decideCompaction(
   tokens: number | null,
   threshold: number | null,
-  suppressed: boolean,
+  state: CompactionState,
 ): CompactionDecision {
   if (tokens === null || threshold === null) {
-    return { trigger: false, suppressed };
+    return { trigger: false, state };
   }
   if (tokens <= threshold) {
-    return { trigger: false, suppressed: false };
+    return { trigger: false, state: INITIAL_STATE };
   }
-  if (suppressed) {
-    return { trigger: false, suppressed: true };
+  if (state.suppressed) {
+    return { trigger: false, state };
   }
-  return { trigger: true, suppressed: true };
+  if (state.attempts >= MAX_ATTEMPTS) {
+    return { trigger: false, state: { ...state, suppressed: true } };
+  }
+  return {
+    trigger: true,
+    state: { suppressed: true, attempts: state.attempts + 1 },
+  };
 }
+
+/** 压缩失败或被取消：解除抑制，下一个 run 收尾时还能再试（次数受 MAX_ATTEMPTS 限制）。 */
+export function afterCompactionFailure(
+  state: CompactionState,
+): CompactionState {
+  return { suppressed: false, attempts: state.attempts };
+}
+
+/** 压缩成功后的状态：保持抑制、清零次数，等占用降下来再重新武装。 */
+export const AFTER_SUCCESS_STATE: CompactionState = {
+  suppressed: true,
+  attempts: 0,
+};
