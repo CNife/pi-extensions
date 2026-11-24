@@ -15,7 +15,9 @@
 | 262,144 | 223K | 223K（85%） |
 | 32,768 | 28K | 28K（85%） |
 
-常量在 [`extensions/threshold.ts`](extensions/threshold.ts)（`MAX_USED_TOKENS` / `TRIGGER_PERCENT`）。想改成「纯 85%」把 `MAX_USED_TOKENS` 调大即可 —— 这是改源码，本包刻意没有配置文件。
+常量在 [`threshold.ts`](threshold.ts)（`MAX_USED_TOKENS` / `TRIGGER_PERCENT`）。想改成「纯 85%」把 `MAX_USED_TOKENS` 调大即可 —— 这是改源码，本包刻意没有配置文件。
+
+设计取舍（为什么不用逐模型常量、为什么必须是 `agent_settled`）见 [ADR 0007](../../docs/adr/0007-compact-threshold-realtime.md)。
 
 pi 只有 `compaction.reserveTokens` 与 `compaction.modelOverrides` 两个入口，两者都只能写死 **per-model 常量**，没有「按窗口自动算」的能力；换模型或换窗口就得手工重算，所以阈值放到扩展里实时算。
 
@@ -40,6 +42,8 @@ pi 只有 `compaction.reserveTokens` 与 `compaction.modelOverrides` 两个入�
 
 内建自动压缩`保持开启`：它在「窗口 - 16K」（约 98%）触发，晚于本扩展的阈值，因此退化成兜底；provider 溢出恢复仍归 pi 自己处理。把 `compaction.enabled` 设为 `false` 时本扩展也不接管（尊重显式关闭）。
 
+`compaction.enabled` 这里只能看合并后的全局/项目值：per-model 覆盖（`modelOverrides.<provider/id>.enabled`）需要 `SettingsManager.getCompactionSettings(model)`，pi 没有把该解析暴露给扩展。
+
 另一条容易忽略的联动是 `compaction.keepRecentTokens`（默认 20K）：压缩的切点由它决定，所以 1M 窗口在 300K 触发后，存活上下文会被砍到「摘要 + 最近约 20K」，而**不是**保留到 300K。想留下更多现场就调大它。
 
 ## 命令
@@ -61,4 +65,4 @@ pi 只有 `compaction.reserveTokens` 与 `compaction.modelOverrides` 两个入�
 pi --no-extensions -e personal/compact-threshold
 ```
 
-包 manifest 显式登记 `./extensions/index.ts`：`extensions/` 下还有仅供 import 的 `threshold.ts`，用目录会被 pi 当扩展入口加载并报「does not export a valid factory function」。
+包 manifest 显式登记 `./extensions/index.ts`（`extensions/` 目录里只放入口，纯逻辑的 `threshold.ts` 在包根）：用目录 glob 会把 helper 也当扩展入口加载并报「does not export a valid factory function」。

@@ -9,21 +9,13 @@ import {
   compactionThreshold,
   decideCompaction,
   INITIAL_STATE,
-} from "./threshold.ts";
+} from "../threshold.ts";
 
 /**
- * 上下文压缩阈值：min(300K 已用 token, 85% 窗口)。
+ * 上下文压缩阈值：min(300K 已用 token, 85% 窗口)，按 `agent_settled` 检查。
  *
- * 检查点放在 `agent_settled`（Pi 已无剩余自动工作）：`ctx.compact()` 走 pi 的
- * manual 入口，第一件事就是 `abort()`，文档写明「Aborts the current agent
- * operation first. Manual compaction never retries or continues the interrupted
- * agent turn.」。`turn_end` 是 run 中途；`agent_end` 时 `_isAgentRunActive`
- * 仍为 true（要到 `_emitAgentSettled` 才置 false），在那里压缩同样会置 abort
- * 请求，把排队 follow-up、自动重试、溢出/长度恢复一并取消。只有
- * `agent_settled` 里 run 已标记为非活跃，abort 才是空操作。
- *
- * 内建机制保留不动：它在窗口 - 16K（约 98%）触发，晚于这里的阈值，因此退化成
- * 兜底，provider 溢出恢复也仍归 pi 自己处理。
+ * 为什么不能放在 `turn_end` / `agent_end`、以及 `keepRecentTokens` 如何影响压缩
+ * 后保留多少，见 README「触发点」「与内建的关系」两节。
  */
 
 type UsageSnapshot =
@@ -49,7 +41,13 @@ function formatTokens(tokens: number): string {
   return String(tokens);
 }
 
-/** 用户显式关掉内建自动压缩（`compaction.enabled: false`）时不接管。 */
+/**
+ * 用户显式关掉自动压缩时不接管。
+ *
+ * 只看合并后的 `compaction.enabled`：per-model 覆盖（`modelOverrides`）里的
+ * `enabled` 需要 `SettingsManager.getCompactionSettings(model)`，pi 没有把这个
+ * 解析暴露给扩展。
+ */
 function autoCompactionEnabled(pi: ExtensionAPI): boolean {
   return pi.getSettings().compaction?.enabled ?? true;
 }

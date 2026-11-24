@@ -9,9 +9,9 @@ import {
   MAX_ATTEMPTS,
   MAX_USED_TOKENS,
   TRIGGER_PERCENT,
-} from "../extensions/threshold.ts";
+} from "../threshold.ts";
 
-const armed: CompactionState = { suppressed: false, attempts: 0 };
+const armed: CompactionState = INITIAL_STATE;
 
 describe("compactionThreshold", () => {
   it("1M 窗口取绝对上限 300K（85% 是 850K，更大）", () => {
@@ -42,7 +42,7 @@ describe("compactionThreshold", () => {
 });
 
 describe("decideCompaction", () => {
-  const threshold = 300_000;
+  const threshold = MAX_USED_TOKENS;
 
   it("超标且未抑制时触发，并记一次尝试", () => {
     expect(decideCompaction(320_000, threshold, armed)).toEqual({
@@ -51,7 +51,7 @@ describe("decideCompaction", () => {
     });
   });
 
-  it("纯函数无记忆：超标即触发，不看上一轮", () => {
+  it("只看传入的 state：未抑制时超标即触发", () => {
     expect(decideCompaction(900_000, threshold, INITIAL_STATE).trigger).toBe(
       true,
     );
@@ -92,9 +92,9 @@ describe("decideCompaction", () => {
 });
 
 describe("压缩结果对状态的影响", () => {
-  const threshold = 300_000;
+  const threshold = MAX_USED_TOKENS;
 
-  it("失败后解除抑制，下一个 run 还能再试", () => {
+  it("失败后解除抑制，下个边界还能再试", () => {
     const attempted: CompactionState = { suppressed: true, attempts: 1 };
     const afterFailure = afterCompactionFailure(attempted);
     expect(afterFailure).toEqual({ suppressed: false, attempts: 1 });
