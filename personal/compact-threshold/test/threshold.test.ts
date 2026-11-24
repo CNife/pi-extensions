@@ -51,7 +51,7 @@ describe("decideCompaction", () => {
     });
   });
 
-  it("首次采样就超标（resume 长会话）也触发", () => {
+  it("纯函数无记忆：超标即触发，不看上一轮", () => {
     expect(decideCompaction(900_000, threshold, INITIAL_STATE).trigger).toBe(
       true,
     );
@@ -89,14 +89,6 @@ describe("decideCompaction", () => {
       state: { suppressed: true, attempts: MAX_ATTEMPTS },
     });
   });
-
-  it("缺用量或缺窗口时不动状态", () => {
-    expect(decideCompaction(null, threshold, armed).state).toEqual(armed);
-    const suppressed: CompactionState = { suppressed: true, attempts: 1 };
-    expect(decideCompaction(400_000, null, suppressed).state).toEqual(
-      suppressed,
-    );
-  });
 });
 
 describe("压缩结果对状态的影响", () => {
@@ -129,8 +121,7 @@ describe("压缩结果对状态的影响", () => {
   it("成功后保持抑制并清零次数，等占用降下来才重新武装", () => {
     const success = AFTER_SUCCESS_STATE;
     expect(success).toEqual({ suppressed: true, attempts: 0 });
-    // 占用还没降下来（压缩刚完成、尚无新回复时 tokens 为 null 或仍高）
-    expect(decideCompaction(null, threshold, success).trigger).toBe(false);
+    // 占用还没降下来（压缩刚完成、尚无新回复，或仍高于阈值）
     expect(decideCompaction(400_000, threshold, success).trigger).toBe(false);
     // 降下来之后重新武装
     expect(decideCompaction(100_000, threshold, success).state).toEqual(

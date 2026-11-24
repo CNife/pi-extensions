@@ -32,7 +32,11 @@ _避免_：把命令和工具混用
 一次 pi agent 对话，含完整的消息树。扩展常通过 session manager 读写状态。
 
 **turn**：
-agent 的一次完整推理-行动循环。扩展常挂在 `turn_end` 等事件上做收尾。一个会话含多个 turn。
+agent 的一次完整推理-行动循环。扩展常挂在 `turn_end` 等事件上做收尾。一个 run 含多个 turn。
+
+**run**：
+一次低层 agent 运行。`agent_end` 标记它结束，但 pi 可能还要重试、压缩或跑排队消息；`agent_settled` 才是「pi 不会再自动续跑」。要判断「现在能不能安全地起压缩」看 run，不看 turn。
+_避免_：把 run 和 turn、session 混用
 
 **message**：
 会话中的单条消息（user / assistant / tool）。比 turn 粒度更细。

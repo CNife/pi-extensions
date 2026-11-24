@@ -14,36 +14,32 @@ import {
 /**
  * 上下文压缩阈值：min(300K 已用 token, 85% 窗口)。
  *
- * 检查点放在 `agent_end`（一次 run 收尾）而不是 `turn_end`（run 中途）：
- * `ctx.compact()` 走 pi 的 manual 入口，文档写明「Aborts the current agent
+ * 检查点放在 `agent_settled`（Pi 已无剩余自动工作）：`ctx.compact()` 走 pi 的
+ * manual 入口，第一件事就是 `abort()`，文档写明「Aborts the current agent
  * operation first. Manual compaction never retries or continues the interrupted
- * agent turn.」——在 turn_end 调用会把正在跑的 agent 循环打断。agent_end 是
- * pi 内建自动压缩自己的时点，此时 run 已收尾，abort 打空。
+ * agent turn.」。`turn_end` 是 run 中途；`agent_end` 时 `_isAgentRunActive`
+ * 仍为 true（要到 `_emitAgentSettled` 才置 false），在那里压缩同样会置 abort
+ * 请求，把排队 follow-up、自动重试、溢出/长度恢复一并取消。只有
+ * `agent_settled` 里 run 已标记为非活跃，abort 才是空操作。
  *
  * 内建机制保留不动：它在窗口 - 16K（约 98%）触发，晚于这里的阈值，因此退化成
  * 兜底，provider 溢出恢复也仍归 pi 自己处理。
  */
 
-interface UsageSnapshot {
-  tokens: number | null;
-  contextWindow: number | null;
-  threshold: number | null;
-}
+type UsageSnapshot =
+  | { known: true; tokens: number; contextWindow: number; threshold: number }
+  | { known: false };
 
 function readUsage(ctx: ExtensionContext): UsageSnapshot {
   const usage = ctx.getContextUsage();
+  const tokens = usage?.tokens ?? null;
   const contextWindow =
     usage?.contextWindow ?? ctx.model?.contextWindow ?? null;
-  return {
-    tokens: usage?.tokens ?? null,
-    contextWindow,
-    threshold: compactionThreshold(contextWindow),
-  };
-}
-
-/** 用户关掉内建自动压缩（`compaction.enabled: false`）时不接管，避免绕过用户的显式关闭。 */
-function autoCompactionEnabled(ctx: ExtensionContext): boolean {
-  return ctx.getSettings().compaction?.enabled ?? true;
+  const threshold = compactionThreshold(contextWindow);
+  if (tokens === null || contextWindow === null || threshold === null) {
+    return { known: false };
+  }
+  return { known: true, tokens, contextWindow, threshold };
 }
 
 function formatTokens(tokens: number): string {
@@ -51,6 +47,11 @@ function formatTokens(tokens: number): string {
     return `${Math.round(tokens / 1000)}K`;
   }
   return String(tokens);
+}
+
+/** 用户显式关掉内建自动压缩（`compaction.enabled: false`）时不接管。 */
+function autoCompactionEnabled(pi: ExtensionAPI): boolean {
+  return pi.getSettings().compaction?.enabled ?? true;
 }
 
 export default function (pi: ExtensionAPI) {
@@ -65,20 +66,24 @@ export default function (pi: ExtensionAPI) {
     state = AFTER_SUCCESS_STATE;
   });
 
-  pi.on("agent_end", (_event, ctx) => {
-    if (!autoCompactionEnabled(ctx)) {
+  pi.on("agent_settled", (_event, ctx) => {
+    if (!autoCompactionEnabled(pi)) {
       return;
     }
-    const { tokens, contextWindow, threshold } = readUsage(ctx);
-    const decision = decideCompaction(tokens, threshold, state);
+    const usage = readUsage(ctx);
+    if (!usage.known) {
+      return;
+    }
+
+    const decision = decideCompaction(usage.tokens, usage.threshold, state);
     state = decision.state;
-    if (!decision.trigger || tokens === null || threshold === null) {
+    if (!decision.trigger) {
       return;
     }
 
     if (ctx.hasUI) {
       ctx.ui.notify(
-        `上下文 ${formatTokens(tokens)} 超过阈值 ${formatTokens(threshold)}（窗口 ${formatTokens(contextWindow ?? 0)}），开始压缩`,
+        `上下文 ${formatTokens(usage.tokens)} 超过阈值 ${formatTokens(usage.threshold)}（窗口 ${formatTokens(usage.contextWindow)}），开始压缩`,
         "info",
       );
     }
@@ -86,9 +91,15 @@ export default function (pi: ExtensionAPI) {
     ctx.compact({
       onError: (error) => {
         state = afterCompactionFailure(state);
-        if (ctx.hasUI) {
-          ctx.ui.notify(`压缩失败：${error.message}`, "error");
+        if (!ctx.hasUI) {
+          return;
         }
+        // 用户主动取消（Esc / abortCompaction）与真失败要分开说，别都报成红色失败。
+        const cancelled = /cancel/i.test(error.message);
+        ctx.ui.notify(
+          cancelled ? "压缩被取消" : `压缩失败：${error.message}`,
+          cancelled ? "warning" : "error",
+        );
       },
     });
   });
@@ -96,14 +107,14 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("compact-threshold", {
     description: "显示当前上下文占用与压缩阈值",
     handler: async (_args, ctx) => {
-      const { tokens, contextWindow, threshold } = readUsage(ctx);
-      if (tokens === null || threshold === null || contextWindow === null) {
+      const usage = readUsage(ctx);
+      if (!usage.known) {
         ctx.ui.notify("拿不到上下文用量或窗口大小", "warning");
         return;
       }
-      const percent = ((tokens / contextWindow) * 100).toFixed(1);
+      const percent = ((usage.tokens / usage.contextWindow) * 100).toFixed(1);
       ctx.ui.notify(
-        `已用 ${formatTokens(tokens)} / ${formatTokens(contextWindow)}（${percent}%），阈值 ${formatTokens(threshold)}`,
+        `已用 ${formatTokens(usage.tokens)} / ${formatTokens(usage.contextWindow)}（${percent}%），阈值 ${formatTokens(usage.threshold)}`,
         "info",
       );
     },

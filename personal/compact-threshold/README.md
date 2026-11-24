@@ -19,13 +19,15 @@
 
 pi 只有 `compaction.reserveTokens` 与 `compaction.modelOverrides` 两个入口，两者都只能写死 **per-model 常量**，没有「按窗口自动算」的能力；换模型或换窗口就得手工重算，所以阈值放到扩展里实时算。
 
-## 触发点：`agent_end`
+## 触发点：`agent_settled`
 
-**不是 `turn_end`。** `ctx.compact()` 走 pi 的 manual 入口，接口文档写明：
+**不是 `turn_end`，也不是 `agent_end`。** `ctx.compact()` 走 pi 的 manual 入口，第一件事就是 `await abort()`，接口文档写明：
 
 > Manually compact the session context… **Aborts the current agent operation first. Manual compaction never retries or continues the interrupted agent turn.**
 
-`turn_end` 是 run 中途，在那里压缩会把正在跑的 agent 循环打断、丢掉后续 turn 与 steering。`agent_end` 是 run 收尾，也正是 pi 内建自动压缩自己的时点，此时 abort 打空（实测顺序为「最终回答落盘 → `agent_end` → `compaction_start`」）。
+- `turn_end` 是 run 中途 → 压缩会把正在跑的 agent 循环打断，后续 turn 与 steering 全丢；
+- `agent_end` 也不行：此时 `_isAgentRunActive` 仍为 `true`（要等 `_emitAgentSettled` 才置 false），abort 请求会把排队 follow-up、自动重试、溢出/长度恢复一并取消；
+- 只有 `agent_settled`（pi 已无剩余自动工作）里 run 已标记非活跃，abort 才是空操作。
 
 ## 状态机
 
@@ -38,6 +40,8 @@ pi 只有 `compaction.reserveTokens` 与 `compaction.modelOverrides` 两个入�
 
 内建自动压缩`保持开启`：它在「窗口 - 16K」（约 98%）触发，晚于本扩展的阈值，因此退化成兜底；provider 溢出恢复仍归 pi 自己处理。把 `compaction.enabled` 设为 `false` 时本扩展也不接管（尊重显式关闭）。
 
+另一条容易忽略的联动是 `compaction.keepRecentTokens`（默认 20K）：压缩的切点由它决定，所以 1M 窗口在 300K 触发后，存活上下文会被砍到「摘要 + 最近约 20K」，而**不是**保留到 300K。想留下更多现场就调大它。
+
 ## 命令
 
 ```text
@@ -46,9 +50,9 @@ pi 只有 `compaction.reserveTokens` 与 `compaction.modelOverrides` 两个入�
 
 ## 已知边界
 
-- **resume 长会话**：`tokens` 优先取最后一条 assistant usage，所以恢复一个已超阈值的会话时，要等第一轮回复之后才会压，第一次请求仍按原样发出（那一次靠内建兜底）；
+- **resume 长会话**：`tokens` 优先取最后一条 assistant usage，恢复一个已超阈值的会话时，要等第一轮跑完（`agent_settled`）才会压，那一次请求仍按原样发出（靠内建兜底）；
 - **单个超长 run**：只在 run 收尾时检查，run 中途冲过阈值不会被打断压缩，极端情况靠内建溢出恢复；
-- **进程退出**：print 模式下 `agent_end` 后进程立即结束，可能来不及完成压缩（长驻的交互/RPC 模式无此问题）；
+- **进程退出**：print 模式跑完即结束进程，可能来不及完成压缩（长驻的交互 / RPC 模式无此问题）；
 - `contextWindow` 为 `null` 的模型不参与判断。
 
 ## 本地测试

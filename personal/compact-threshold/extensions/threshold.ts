@@ -38,10 +38,10 @@ export interface CompactionState {
   attempts: number;
 }
 
-export const INITIAL_STATE: CompactionState = {
+export const INITIAL_STATE: CompactionState = Object.freeze({
   suppressed: false,
   attempts: 0,
-};
+});
 
 export interface CompactionDecision {
   /** 本轮是否该触发压缩 */
@@ -60,13 +60,10 @@ export interface CompactionDecision {
  * - 尝试次数用尽 → 保持抑制，放弃本次超标，交给 pi 内建的 98% 兜底。
  */
 export function decideCompaction(
-  tokens: number | null,
-  threshold: number | null,
+  tokens: number,
+  threshold: number,
   state: CompactionState,
 ): CompactionDecision {
-  if (tokens === null || threshold === null) {
-    return { trigger: false, state };
-  }
   if (tokens <= threshold) {
     return { trigger: false, state: INITIAL_STATE };
   }
@@ -90,7 +87,7 @@ export function afterCompactionFailure(
 }
 
 /** 压缩成功后的状态：保持抑制、清零次数，等占用降下来再重新武装。 */
-export const AFTER_SUCCESS_STATE: CompactionState = {
+export const AFTER_SUCCESS_STATE: CompactionState = Object.freeze({
   suppressed: true,
   attempts: 0,
-};
+});
