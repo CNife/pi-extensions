@@ -9,6 +9,7 @@
     "extensions": [
       "personal/*.ts",
       "personal/nmem-lite/extensions/nmem-lite.ts",
+      "personal/compact-threshold/extensions/index.ts",
       "personal/plannotator-cli/extensions/index.ts",
       "personal/thinking-fold/extensions/index.ts"
     ],
