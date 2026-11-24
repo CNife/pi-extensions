@@ -1,0 +1,19 @@
+{
+  "name": "compact-threshold",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "按 min(300K, 85% 窗口) 动态触发 pi 的上下文压缩，替代每模型写死的 reserveTokens",
+  "keywords": [
+    "pi-package"
+  ],
+  "license": "MIT",
+  "pi": {
+    "extensions": [
+      "./extensions/index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}
